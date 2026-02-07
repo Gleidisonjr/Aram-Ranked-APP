@@ -1,5 +1,5 @@
 import './style.css'
-import type { Match, ChampionPick, PlayerStats, KdaEntry, MatchExtendedStat } from './types'
+import type { Match, ChampionPick, PlayerStats, KdaEntry } from './types'
 import {
   loadPlayers,
   savePlayers,
@@ -1346,7 +1346,6 @@ function computeChampHighlights(matchList: Match[]): Map<string, Map<string, Cha
     let bestPlayerId: string | null = null
     let worstPlayerId: string | null = null
     if (kdaList.length > 0) {
-      const winnerSet = new Set(m.winnerIds)
       const withRatio = kdaList.map((e) => {
         const d = Math.max(e.deaths, 1)
         const ratio = (e.kills + e.assists) / d
@@ -1646,7 +1645,6 @@ function createDamageStatsSection(matchList: Match[], ranking: PlayerStats[]) {
   section.className = 'card damage-stats-section individual-stats-section'
   const dmgBgUrl = getChampionSplashUrl('Caitlyn', 2) ?? ''
   const dmgBgStyle = dmgBgUrl ? ` style="background-image: url(${escapeHtml(dmgBgUrl)})"` : ''
-  const nameById = new Map(ranking.map((s) => [s.player.id, s.player.name]))
   const { counts, labels } = computeIndividualHighlightCounts(matchList, ranking)
   const rows = ranking
     .map((s) => {

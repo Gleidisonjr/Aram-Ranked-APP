@@ -15,6 +15,7 @@ const REMOVED_PLAYER_NAMES = new Set([
   'Sinist',
   'zezinho',
   'Zezinho',
+  'MEU PIRU', // removido: nome incorreto, usar MEU P1RU (com número 1)
 ])
 
 export interface RankingData {

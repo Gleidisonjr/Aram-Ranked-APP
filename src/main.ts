@@ -356,7 +356,7 @@ function createLayout(ranking: PlayerStats[]) {
     createComparePlayersSection(ranking, filteredMatches, highlightsData),
     createChampionStatsSection(ranking),
     createBestPlayerPerChampionSection(ranking, matches),
-    createCompareChampionsSection(ranking),
+    createCompareChampionsSection(ranking, filteredMatches),
     createGraphicsSection(ranking, filteredMatches),
     createRecordsSection(filteredMatches, ranking),
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
@@ -1299,6 +1299,41 @@ function createPrintImportSection() {
 }
 */
 
+/** Confronto direto entre dois campeões: em times opostos (X vitórias vs Y) ou juntos. */
+function computeChampionHeadToHead(champKey1: string, champKey2: string, matchList: Match[]) {
+  let champ1WinsVs = 0
+  let champ2WinsVs = 0
+  let matchesTogether = 0
+  let winsTogether = 0
+  const k1 = champKey1.toLowerCase()
+  const k2 = champKey2.toLowerCase()
+  for (const m of matchList) {
+    const pickByPlayer = new Map((m.picks ?? []).map((p) => [p.playerId, p.champion.trim().toLowerCase()]))
+    const getChampTeam = (champK: string) => {
+      for (const pid of [...m.winnerIds, ...m.loserIds]) {
+        if (pickByPlayer.get(pid) === champK) return { playerId: pid, won: m.winnerIds.includes(pid) }
+      }
+      return null
+    }
+    const t1 = getChampTeam(k1)
+    const t2 = getChampTeam(k2)
+    if (!t1 || !t2) continue
+    const opposite = (m.winnerIds.includes(t1.playerId) && m.loserIds.includes(t2.playerId)) ||
+      (m.loserIds.includes(t1.playerId) && m.winnerIds.includes(t2.playerId))
+    const together = (m.winnerIds.includes(t1.playerId) && m.winnerIds.includes(t2.playerId)) ||
+      (m.loserIds.includes(t1.playerId) && m.loserIds.includes(t2.playerId))
+    if (opposite) {
+      if (t1.won) champ1WinsVs++
+      else champ2WinsVs++
+    }
+    if (together) {
+      matchesTogether++
+      if (t1.won && t2.won) winsTogether++
+    }
+  }
+  return { champ1WinsVs, champ2WinsVs, matchesTogether, winsTogether }
+}
+
 /** Confronto direto: quando jogaram em times opostos ou juntos. */
 function computeHeadToHead(playerId1: string, playerId2: string, matchList: Match[]) {
   let p1WinsOpposite = 0
@@ -1433,11 +1468,13 @@ function createComparePlayersSection(ranking: PlayerStats[], matchList: Match[],
     const splash3 = getChampionSplashUrl('Caitlyn', 1) ?? ''
     const card1 = (s: PlayerStats, pos: number, splash: string) => {
       const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)
+      const rankEmblemUrl = getRankEmblemUrl(s.patenteTier)
+      const emblemHtml = rankEmblemUrl ? `<img class="compare-player-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="28" height="28" />` : ''
       return `<div class="compare-card compare-card--splash">
         <div class="compare-card-bg" style="background-image: url(${escapeHtml(splash)})" aria-hidden="true"></div>
         <div class="compare-card-overlay"></div>
         <div class="compare-card-inner">
-          <h3>${nameHtml}${playerTagsHtml(s, pos)}</h3>
+          <h3 class="compare-card-title-wrap">${emblemHtml}<span>${nameHtml}${playerTagsHtml(s, pos)}</span></h3>
           <div class="compare-stat"><span class="compare-label">Posição</span><span class="compare-pos ${posClass(pos)}">${posDisplay(pos)}</span></div>
           <div class="compare-stat"><span class="compare-label">V/D</span><span>${vdHtml(s.wins, s.losses)}</span></div>
           <div class="compare-stat"><span class="compare-label">Win%</span>${winrateHtml(s.winRate)}</div>
@@ -1469,7 +1506,7 @@ function createComparePlayersSection(ranking: PlayerStats[], matchList: Match[],
   return section
 }
 
-function createCompareChampionsSection(ranking: PlayerStats[]) {
+function createCompareChampionsSection(ranking: PlayerStats[], matchList: Match[]) {
   const byChamp = new Map<string, { total: number; wins: number; bestPlayerId: string; bestPlayerName: string; bestWins: number }>()
   for (const s of ranking) {
     for (const c of s.championPlays) {
@@ -1511,7 +1548,7 @@ function createCompareChampionsSection(ranking: PlayerStats[]) {
     <div class="compare-champions-overlay"></div>
     <div class="compare-champions-inner">
       <h2>Comparar campeões</h2>
-      <p class="compare-champions-hint">Compare estatísticas gerais de dois campeões.</p>
+      <p class="compare-champions-hint">Compare estatísticas e confronto direto entre dois campeões.</p>
       <div class="compare-champions-selects">
         <select class="compare-champ-select compare-champ-select-1" aria-label="Campeão 1">
           <option value="">— Selecionar —</option>${optionsHtml}
@@ -1527,6 +1564,20 @@ function createCompareChampionsSection(ranking: PlayerStats[]) {
   const select1 = section.querySelector<HTMLSelectElement>('.compare-champ-select-1')!
   const select2 = section.querySelector<HTMLSelectElement>('.compare-champ-select-2')!
   const resultEl = section.querySelector('.compare-champions-result')!
+  function bestPlayerHtml(bestPlayerId: string, bestPlayerName: string) {
+    const bestStats = ranking.find((r) => r.player.id === bestPlayerId)
+    if (!bestStats) return escapeHtml(bestPlayerName)
+    const emblemUrl = getRankEmblemUrl(bestStats.patenteTier)
+    const emblemHtml = emblemUrl ? `<img class="compare-champ-elo-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="24" height="24" />` : ''
+    const tags: string[] = []
+    if (bestStats.player.badge) tags.push('<span class="player-badge-boss">Boss</span>')
+    const pos = ranking.findIndex((r) => r.player.id === bestPlayerId) + 1
+    if (pos === 1) tags.push('<span class="player-badge-leader" title="Líder">Líder</span>')
+    if (pos === ranking.length && ranking.length > 0) tags.push('<span class="player-badge-lantern" title="Lanterna">Lanterna</span>')
+    if ((bestStats.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp')) tags.push('<span class="player-badge-main" title="Main">Main</span>')
+    const tagsHtml = tags.length > 0 ? ' ' + tags.join(' ') : ''
+    return `${emblemHtml}<span>${escapeHtml(bestPlayerName)}${tagsHtml}</span>`
+  }
   function render() {
     const k1 = select1.value
     const k2 = select2.value
@@ -1536,11 +1587,28 @@ function createCompareChampionsSection(ranking: PlayerStats[]) {
     }
     const c1 = champList.find((c) => c.key === k1)!
     const c2 = champList.find((c) => c.key === k2)!
+    const h2h = computeChampionHeadToHead(k1, k2, matchList)
     const winRate1 = c1.total > 0 ? ((c1.wins / c1.total) * 100).toFixed(1) : '0'
     const winRate2 = c2.total > 0 ? ((c2.wins / c2.total) * 100).toFixed(1) : '0'
+    const totalOpposite = h2h.champ1WinsVs + h2h.champ2WinsVs
+    const leadChamp = totalOpposite > 0 ? (h2h.champ1WinsVs > h2h.champ2WinsVs ? c1 : h2h.champ2WinsVs > h2h.champ1WinsVs ? c2 : null) : null
+    const loserChamp = totalOpposite > 0 && leadChamp ? (leadChamp.key === k1 ? c2 : c1) : null
+    const nameSpan = (display: string, isWinner: boolean, isLoser: boolean) => {
+      if (isWinner) return `<span class="compare-name compare-name--win">${escapeHtml(display)}</span>`
+      if (isLoser) return `<span class="compare-name compare-name--loss">${escapeHtml(display)}</span>`
+      return `<span class="compare-name">${escapeHtml(display)}</span>`
+    }
+    const oppositeText = totalOpposite > 0
+      ? `<p class="compare-champ-h2h"><strong>Em times opostos:</strong> ${nameSpan(c1.display, leadChamp?.key === k1, loserChamp?.key === k1)} <span class="compare-score">${h2h.champ1WinsVs}</span> × <span class="compare-score">${h2h.champ2WinsVs}</span> ${nameSpan(c2.display, leadChamp?.key === k2, loserChamp?.key === k2)}</p>
+         ${leadChamp && loserChamp ? `<p class="compare-champ-lead"><span class="compare-name compare-name--loss">${escapeHtml(loserChamp.display)}</span> está perdendo para <span class="compare-name compare-name--win">${escapeHtml(leadChamp.display)}</span>.</p>` : '<p class="compare-champ-lead">Empate no confronto.</p>'}`
+      : '<p class="compare-champ-h2h empty">Nunca jogaram em times opostos na mesma partida.</p>'
+    const togetherText = h2h.matchesTogether > 0
+      ? `<p class="compare-champ-together"><strong>Juntos no mesmo time:</strong> <span class="compare-name compare-name--win">${h2h.winsTogether} vitórias</span> e <span class="compare-name compare-name--loss">${h2h.matchesTogether - h2h.winsTogether} derrotas</span> em ${h2h.matchesTogether} partidas.</p>`
+      : ''
     const icon1 = getChampionIconUrl(c1.display)
     const icon2 = getChampionIconUrl(c2.display)
     const iconHtml = (url: string | null) => url ? `<img class="compare-champ-icon" src="${escapeHtml(url)}" alt="" width="40" height="40" />` : ''
+    const splash2 = getChampionSplashUrl('Vi', 1) ?? ''
     resultEl.innerHTML = `
       <div class="compare-champions-cards">
         <div class="compare-champ-card">
@@ -1548,17 +1616,23 @@ function createCompareChampionsSection(ranking: PlayerStats[]) {
           <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c1.total}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c1.wins}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate1) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate1}%</span></div>
-          <div class="compare-champ-stat"><span class="compare-champ-label">Melhor jogador</span><span>${escapeHtml(c1.bestPlayerName)}</span></div>
+          <div class="compare-champ-stat compare-champ-best"><span class="compare-champ-label">Melhor jogador</span><span class="compare-champ-best-player">${bestPlayerHtml(c1.bestPlayerId, c1.bestPlayerName)}</span></div>
         </div>
-        <div class="compare-champ-card compare-champ-card-vs">
-          <span>vs</span>
+        <div class="compare-champ-card compare-champ-card-vs compare-champ-card-head">
+          <div class="compare-champ-card-bg" style="background-image: url(${escapeHtml(splash2)})" aria-hidden="true"></div>
+          <div class="compare-champ-card-overlay"></div>
+          <div class="compare-champ-vs-content">
+            <span class="compare-champ-vs-label">Confronto direto</span>
+            ${oppositeText}
+            ${togetherText}
+          </div>
         </div>
         <div class="compare-champ-card">
           <div class="compare-champ-card-header">${iconHtml(icon2)}<span>${escapeHtml(c2.display)}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c2.total}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c2.wins}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate2) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate2}%</span></div>
-          <div class="compare-champ-stat"><span class="compare-champ-label">Melhor jogador</span><span>${escapeHtml(c2.bestPlayerName)}</span></div>
+          <div class="compare-champ-stat compare-champ-best"><span class="compare-champ-label">Melhor jogador</span><span class="compare-champ-best-player">${bestPlayerHtml(c2.bestPlayerId, c2.bestPlayerName)}</span></div>
         </div>
       </div>
     `
@@ -1635,27 +1709,12 @@ function createGraphicsSection(ranking: PlayerStats[], matches: Match[]) {
     const rankEmblemUrl = getRankEmblemUrl(s.patenteTier)
     const emblemHtml = rankEmblemUrl ? `<img class="graphics-player-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="40" height="40" />` : ''
     const n = eloSteps.length
-    const w = 280
-    const h = 80
-    const padding = { top: 8, right: 8, bottom: 20, left: 8 }
-    const chartW = w - padding.left - padding.right
-    const chartH = h - padding.top - padding.bottom
     const maxStep = 38
-    const pointsToPath = (vals: number[], maxVal: number) => {
-      if (vals.length === 0) return ''
-      const divisor = n <= 1 ? 1 : n - 1
-      return vals
-        .map((v, i) => {
-          const x = padding.left + (i / divisor) * chartW
-          const y = padding.top + chartH - (maxVal > 0 ? (v / maxVal) * chartH : 0)
-          return `${x},${y}`
-        })
-        .join(' ')
-    }
-    const eloPath = pointsToPath(eloSteps, maxStep)
-    const wrPath = pointsToPath(winrates, 100)
+    const wrClass = (wr: number) => wr >= 75 ? 'graphics-wr-elite' : wr >= 50 ? 'graphics-wr-pos' : 'graphics-wr-neg'
     const lastElo = getEloByStep(eloSteps[eloSteps.length - 1] ?? 0)
     const lastWr = winrates[winrates.length - 1] ?? 0
+    const winrateElite = lastWr >= 75
+    const winratePos = lastWr >= 50
     chartsEl.innerHTML = `
       <div class="graphics-player-card">
         <div class="graphics-player-header">
@@ -1664,22 +1723,82 @@ function createGraphicsSection(ranking: PlayerStats[], matches: Match[]) {
             <h3 class="graphics-player-name">${escapeHtml(s.player.name)}</h3>
             <p class="graphics-player-stats">
               <span class="graphics-stat">${escapeHtml(lastElo.label)}</span>
-              <span class="graphics-stat">${lastWr.toFixed(1)}% win rate</span>
+              <span class="graphics-stat ${winrateElite ? 'graphics-wr-elite' : winratePos ? 'graphics-wr-pos' : 'graphics-wr-neg'}">${lastWr.toFixed(1)}% win rate</span>
               <span class="graphics-stat">${s.wins}V ${s.losses}D</span>
             </p>
           </div>
         </div>
         <div class="graphics-chart-block">
           <h4 class="graphics-chart-title">Evolução do ELO</h4>
-          <svg class="graphics-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-            <polyline class="graphics-line graphics-line-elo" fill="none" stroke="currentColor" stroke-width="1.5" points="${eloPath}" />
-          </svg>
+          <div class="graphics-chart-with-axes">
+            <div class="graphics-y-axis graphics-y-elo">
+              <span>38</span><span>20</span><span>10</span><span>0</span>
+            </div>
+            <div class="graphics-chart-inner">
+              <div class="graphics-track graphics-track-elo">
+                <svg class="graphics-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline class="graphics-polyline graphics-polyline-elo" fill="none" stroke="currentColor" stroke-width="2" points="${eloSteps.map((step, i) => {
+                  const divisor = Math.max(1, n - 1)
+                  const x = n <= 1 ? 50 : (i / divisor) * 100
+                  const y = 100 - (maxStep > 0 ? (step / maxStep) * 100 : 0)
+                  return `${x},${y}`
+                }).join(' ')}" /></svg>
+                ${eloSteps.map((step, i) => {
+                  const label = getEloByStep(step).label
+                  const divisor = Math.max(1, n - 1)
+                  const leftPct = n <= 1 ? 50 : (i / divisor) * 100
+                  const bottomPct = maxStep > 0 ? (step / maxStep) * 100 : 0
+                  return `<div class="graphics-point-wrap" style="left: ${leftPct}%; bottom: ${bottomPct}%;" title="Partida ${i + 1}: ${escapeHtml(label)}">
+                    <span class="graphics-point graphics-point-elo"></span>
+                    <span class="graphics-point-label graphics-elo-label">${escapeHtml(label)}</span>
+                  </div>`
+                }).join('')}
+              </div>
+              <div class="graphics-x-axis">
+                <span class="graphics-x-label">Partida</span>
+                ${Array.from({ length: n }, (_, i) => {
+                  const divisor = Math.max(1, n - 1)
+                  const leftPct = n <= 1 ? 50 : (i / divisor) * 100
+                  return `<span class="graphics-x-tick" style="left: ${leftPct}%;">${i + 1}</span>`
+                }).join('')}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="graphics-chart-block">
           <h4 class="graphics-chart-title">Evolução do win rate</h4>
-          <svg class="graphics-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-            <polyline class="graphics-line graphics-line-wr" fill="none" stroke="currentColor" stroke-width="1.5" points="${wrPath}" />
-          </svg>
+          <div class="graphics-chart-with-axes">
+            <div class="graphics-y-axis graphics-y-wr">
+              <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+            </div>
+            <div class="graphics-chart-inner">
+              <div class="graphics-track graphics-track-wr">
+                <svg class="graphics-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline class="graphics-polyline graphics-polyline-wr" fill="none" stroke="currentColor" stroke-width="2" points="${winrates.map((wr, i) => {
+                  const divisor = Math.max(1, n - 1)
+                  const x = n <= 1 ? 50 : (i / divisor) * 100
+                  const y = 100 - wr
+                  return `${x},${y}`
+                }).join(' ')}" /></svg>
+                ${winrates.map((wr, i) => {
+                  const pct = wr.toFixed(0)
+                  const divisor = Math.max(1, n - 1)
+                  const leftPct = n <= 1 ? 50 : (i / divisor) * 100
+                  const bottomPct = wr
+                  return `<div class="graphics-point-wrap" style="left: ${leftPct}%; bottom: ${bottomPct}%;" title="Partida ${i + 1}: ${pct}%">
+                    <span class="graphics-point graphics-point-wr ${wrClass(wr)}"></span>
+                    <span class="graphics-point-label graphics-wr-label ${wrClass(wr)}">${pct}%</span>
+                  </div>`
+                }).join('')}
+              </div>
+              <div class="graphics-x-axis">
+                <span class="graphics-x-label">Partida</span>
+                ${Array.from({ length: n }, (_, i) => {
+                  const divisor = Math.max(1, n - 1)
+                  const leftPct = n <= 1 ? 50 : (i / divisor) * 100
+                  return `<span class="graphics-x-tick" style="left: ${leftPct}%;">${i + 1}</span>`
+                }).join('')}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `

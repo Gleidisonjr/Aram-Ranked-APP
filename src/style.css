@@ -1423,6 +1423,59 @@ body {
   font-size: 1.5rem;
   color: var(--accent);
 }
+.compare-champ-card-vs.compare-champ-card-head {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  flex-direction: column;
+  align-items: stretch;
+}
+.compare-champ-card-vs .compare-champ-card-bg,
+.compare-champ-card-vs .compare-champ-card-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.compare-champ-card-vs .compare-champ-card-bg {
+  background-color: var(--bg);
+  background-size: cover;
+  background-position: center;
+  opacity: 0.5;
+}
+.compare-champ-card-vs .compare-champ-card-overlay {
+  background: linear-gradient(135deg, rgba(13, 13, 15, 0.88) 0%, rgba(13, 13, 15, 0.75) 100%);
+}
+.compare-champ-vs-content {
+  position: relative;
+  z-index: 1;
+  padding: 0.5rem;
+}
+.compare-champ-vs-label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--accent);
+}
+.compare-champ-h2h,
+.compare-champ-lead,
+.compare-champ-together {
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+  color: #fff;
+}
+.compare-champ-lead {
+  font-weight: 600;
+}
+.compare-champ-elo-emblem {
+  vertical-align: middle;
+  margin-right: 0.25rem;
+  border-radius: 4px;
+}
+.compare-champ-best-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
 .compare-champ-card-header {
   display: flex;
   align-items: center;
@@ -1545,21 +1598,111 @@ body {
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
-.graphics-svg {
-  width: 100%;
-  height: 120px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
+.graphics-chart-with-axes {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
 }
-.graphics-line {
+.graphics-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+}
+.graphics-y-axis span {
+  white-space: nowrap;
+}
+.graphics-chart-inner {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.graphics-track {
+  position: relative;
+  height: 140px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.graphics-line-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.graphics-polyline {
   vector-effect: non-scaling-stroke;
 }
-.graphics-line-elo {
+.graphics-polyline-elo {
   color: var(--accent);
 }
-.graphics-line-wr {
+.graphics-polyline-wr {
   color: var(--win);
 }
+.graphics-point-wrap {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  z-index: 2;
+}
+.graphics-point {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.graphics-point-elo {
+  color: var(--accent);
+}
+.graphics-point-wr {
+  color: var(--win);
+}
+.graphics-point-wr.graphics-wr-pos { color: var(--win); }
+.graphics-point-wr.graphics-wr-neg { color: var(--loss); }
+.graphics-point-wr.graphics-wr-elite { color: #fbbf24; }
+.graphics-point-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+.graphics-elo-label {
+  color: var(--accent);
+}
+.graphics-wr-label.graphics-wr-pos { color: var(--win); }
+.graphics-wr-label.graphics-wr-neg { color: var(--loss); }
+.graphics-wr-label.graphics-wr-elite { color: #fbbf24; }
+.graphics-x-axis {
+  position: relative;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.graphics-x-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.graphics-x-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.graphics-stat.graphics-wr-pos { color: var(--win); }
+.graphics-stat.graphics-wr-neg { color: var(--loss); }
+.graphics-stat.graphics-wr-elite { color: #fbbf24; }
 
 /* OTP detail modal (histórico do jogador com o campeão) */
 .otp-detail-content {
@@ -1930,7 +2073,8 @@ body {
   max-width: 180px;
   justify-content: space-between;
 }
-.compare-card h3 {
+.compare-card h3,
+.compare-card-title-wrap {
   margin: 0 0 0.75rem;
   font-size: 1rem;
   padding-bottom: 0.5rem;
@@ -1941,6 +2085,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.35rem 0.5rem;
+}
+.compare-player-emblem {
+  flex-shrink: 0;
+  border-radius: 6px;
 }
 .compare-card:not(.compare-card-head) .compare-card-inner h3 {
   justify-content: center;

@@ -984,6 +984,34 @@ body {
 .history-match-header:hover {
   color: var(--accent);
 }
+.history-edit-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.history-edit-btn:hover {
+  background: var(--accent) !important;
+  color: var(--bg) !important;
+}
+
+/* Edit match modal */
+.edit-match-panel {
+  max-width: 580px;
+}
+.edit-match-row {
+  transition: background 0.15s;
+}
+.edit-match-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.edit-match-row input[type="number"] {
+  -moz-appearance: textfield;
+}
+.edit-match-row input[type="number"]::-webkit-outer-spin-button,
+.edit-match-row input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .history-match-toggle {
   display: inline-block;
   width: 1rem;

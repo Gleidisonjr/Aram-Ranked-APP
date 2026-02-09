@@ -14,7 +14,7 @@ import {
   findPlayerByName,
 } from './store'
 // import type { ImportPrintData } from './store' // usado na createPrintImportSection (comentada)
-import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls } from './ddragon'
+import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls, getCanonicalChampionName } from './ddragon'
 
 /** Toca um som opcional da pasta public/sounds/. Use para sortear: "sortear-start" (ao clicar) e "sortear-done" (ao exibir resultado). */
 function playSound(name: string): void {
@@ -42,6 +42,18 @@ async function init() {
   saveMatches(matches)
   await loadChampionData()
   rerender()
+}
+
+function exportRankingJson() {
+  const data = { players, matches }
+  const json = JSON.stringify(data, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'ranking.json'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 async function restoreFromFile() {
@@ -102,6 +114,15 @@ function addMatch(winnerIds: string[], loserIds: string[], picks: ChampionPick[]
   saveMatches(matches)
   rerender()
   return match
+}
+
+function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[]) {
+  const idx = matches.findIndex((m) => m.id === matchId)
+  if (idx < 0) return
+  matches = [...matches]
+  matches[idx] = { ...matches[idx], picks, kda: kda.length ? kda : undefined }
+  saveMatches(matches)
+  rerender()
 }
 
 function renderApp(ranking: PlayerStats[]) {
@@ -255,8 +276,6 @@ function getMatchHighlightIds(m: Match): MatchHighlightIds {
   const allPlayerIds = [...m.winnerIds, ...m.loserIds]
   if (allPlayerIds.length === 0) return result
 
-  const statsByPlayer = new Map(stats.map((s) => [s.playerId, s]))
-
   let maxDamage = 0
   let maxReceived = 0
   let maxHealed = 0
@@ -302,28 +321,22 @@ function getMatchHighlightIds(m: Match): MatchHighlightIds {
     }
   })
 
+  // MVP = maior ratio KDA (sem usar dano/cura — não temos esses dados do print)
   let bestMvpScore = -1
   for (const playerId of allPlayerIds) {
     const kda = kdaList.find((e) => e.playerId === playerId)
     const d = Math.max(kda?.deaths ?? 0, 1)
     const ratio = kda ? (kda.kills + kda.assists) / d : 0
     const isWinner = winnerSet.has(playerId)
-    let mvpScore = ratio * (isWinner ? 1.5 : 0.5)
-    const ext = statsByPlayer.get(playerId)
-    if (ext && (maxDamage > 0 || maxReceived > 0 || maxHealed > 0)) {
-      if (maxDamage > 0 && ext.damageToChampions != null)
-        mvpScore += (ext.damageToChampions / maxDamage) * 10
-      if (maxReceived > 0 && ext.damageReceived != null)
-        mvpScore += (ext.damageReceived / maxReceived) * 3
-      if (maxHealed > 0 && ext.damageHealed != null)
-        mvpScore += (ext.damageHealed / maxHealed) * 5
-    }
+    const mvpScore = ratio * (isWinner ? 1.5 : 0.5)
     if (mvpScore > bestMvpScore) {
       bestMvpScore = mvpScore
       result.mvpPlayerId = playerId
     }
   }
   if (kdaList.length === 0) result.mvpPlayerId = null
+  // Não usamos topDamageToChampions — não temos dados de dano do print
+  result.topDamageToChampionsPlayerId = null
   return result
 }
 
@@ -332,6 +345,7 @@ function createLayout(ranking: PlayerStats[]) {
   el.className = 'layout'
   const modal = createProfileModal()
   const otpModal = createOtpDetailModal()
+  const editMatchModal = createEditMatchModal()
   const filteredMatches = matchLimit != null ? matches.slice(0, matchLimit) : matches
   const highlightsData = computeHighlightsData(ranking, filteredMatches)
   lastHighlightsData = highlightsData
@@ -350,7 +364,8 @@ function createLayout(ranking: PlayerStats[]) {
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
     modal,
-    otpModal
+    otpModal,
+    editMatchModal
   )
   // Referências para seções comentadas (evita noUnusedLocals)
   if (false) void (_createRiotMatchSection_removed(), createDamageStatsSection(matches, ranking), createHallOfFameSection(matches, ranking))
@@ -472,6 +487,7 @@ function createToolbar() {
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const adminToolsHtml = isAdminMode()
     ? `<button type="button" class="btn btn-secondary btn-sm btn-restore" title="Recarregar jogadores e partidas do ranking.json">Restaurar dados</button>
+       <button type="button" class="btn btn-secondary btn-sm btn-export" title="Baixar ranking.json com os dados atuais (para substituir public/ranking.json)">Exportar ranking.json</button>
        <button type="button" class="btn btn-secondary btn-sm btn-new-season">Nova temporada</button>`
     : ''
   bar.innerHTML = `
@@ -483,6 +499,7 @@ function createToolbar() {
     </div>
   `
   bar.querySelector('.btn-restore')?.addEventListener('click', () => restoreFromFile())
+  bar.querySelector('.btn-export')?.addEventListener('click', () => exportRankingJson())
   bar.querySelector('.btn-new-season')?.addEventListener('click', startNewSeason)
   return bar
 }
@@ -603,7 +620,17 @@ function createSortearTimesSection() {
             <ul class="m-0 p-0 list-none space-y-2.5">${team2.map((p, i) => `<li class="py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5" style="animation-delay: ${playerRowDelay(0.28, i)}"><span class="min-w-0">${playerWithTagsHtml(p)}</span>${eloBadgeHtml(p.id)}</li>`).join('')}</ul>
           </div>
         </div>
-        <div class="sortear-actions flex flex-wrap gap-3">
+        <div class="sortear-champions mt-5 pt-5 border-t border-slate-600">
+          <h4 class="m-0 mb-1 text-sm font-bold text-slate-300">Campeão por jogador</h4>
+          <p class="hint m-0 mb-3 text-slate-500 text-xs">Preencha manualmente para referência ao registrar a partida.</p>
+          <div class="champion-inputs">
+            ${[...team1, ...team2].map((p) => `<div class="champion-row">
+              <span class="champion-name">${escapeHtml(p.name)}</span>
+              <input type="text" class="champion-input" placeholder="Campeão" data-player-id="${escapeHtml(p.id)}" />
+            </div>`).join('')}
+          </div>
+        </div>
+        <div class="sortear-actions flex flex-wrap gap-3 mt-5">
           <button type="button" class="sortear-again rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900 transition shadow">Sortear de novo</button>
           <button type="button" class="sortear-voltar rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white transition">Voltar</button>
         </div>
@@ -962,7 +989,6 @@ function createHistorySection() {
         if (playerId === matchHighlights.mvpPlayerId) badges.push({ label: 'MVP', theme: 'positive' })
         if (playerId === bestRatioPlayerId) badges.push({ label: 'Melhor KDA', theme: 'positive' })
         if (playerId === mostKillsPlayerId) badges.push({ label: 'Mais abates', theme: 'positive' })
-        if (playerId === matchHighlights.topDamageToChampionsPlayerId) badges.push({ label: 'Mais dano', theme: 'positive' })
         if (playerId === matchHighlights.topHealedPlayerId) badges.push({ label: 'Mais curou', theme: 'positive' })
         if (playerId === matchHighlights.topSelfMitigatedPlayerId) badges.push({ label: 'Mais tankou', theme: 'positive' })
         if (playerId === worstRatioPlayerId) badges.push({ label: 'Pior KDA', theme: 'negative' })
@@ -986,6 +1012,7 @@ function createHistorySection() {
           <span class="history-match-toggle" aria-hidden="true"></span>
           <span class="history-num" title="Partida ${partidaNum} de ${total}">#${partidaNum}</span>
           <span class="history-date">${escapeHtml(dateStr)}</span>
+          <button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar campeão e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>
         </div>
         <div class="history-match-body">
           <div class="history-match-teams">
@@ -1009,6 +1036,13 @@ function createHistorySection() {
         </div>
       `
       const header = row.querySelector('.history-match-header')!
+      const editBtn = row.querySelector('.history-edit-btn')
+      editBtn?.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const matchId = (editBtn as HTMLElement).dataset.matchId
+        const match = matches.find((m) => m.id === matchId)
+        if (match) showEditMatchModal(match)
+      })
       header.addEventListener('click', () => {
         const collapsed = row.classList.toggle('history-match-card--collapsed')
         header.setAttribute('aria-expanded', String(!collapsed))
@@ -1527,6 +1561,85 @@ function createOtpDetailModal(): HTMLElement {
   return root
 }
 
+let currentEditMatch: Match | null = null
+
+function createEditMatchModal(): HTMLElement {
+  const root = document.createElement('div')
+  root.className = 'profile-modal edit-match-modal'
+  root.id = 'edit-match-modal'
+  root.innerHTML = `
+    <div class="profile-modal-overlay"></div>
+    <div class="profile-modal-panel edit-match-panel">
+      <button type="button" class="profile-modal-close" aria-label="Fechar">×</button>
+      <div class="profile-modal-content edit-match-content">
+        <h2 class="edit-match-title">Editar partida</h2>
+        <p class="edit-match-hint mb-4 text-slate-400 text-sm">Ajuste campeão e K/D/A de cada jogador.</p>
+        <div class="edit-match-form"></div>
+        <div class="edit-match-actions mt-4 flex gap-3">
+          <button type="button" class="edit-match-save rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900">Salvar</button>
+          <button type="button" class="edit-match-cancel rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  `
+  root.querySelector('.profile-modal-overlay')!.addEventListener('click', () => root.classList.remove('open'))
+  root.querySelector('.profile-modal-close')!.addEventListener('click', () => root.classList.remove('open'))
+  root.querySelector('.edit-match-cancel')!.addEventListener('click', () => root.classList.remove('open'))
+  root.querySelector('.edit-match-save')!.addEventListener('click', () => {
+    const m = currentEditMatch
+    if (!m) return
+    const formEl = root.querySelector('.edit-match-form')
+    if (!formEl) return
+    const picks: ChampionPick[] = []
+    const kda: KdaEntry[] = []
+    formEl.querySelectorAll('.edit-match-row').forEach((row) => {
+      const champInput = row.querySelector('.edit-match-champ') as HTMLInputElement
+      const playerId = champInput?.dataset?.playerId ?? ''
+      const champRaw = champInput?.value?.trim() ?? ''
+      const champ = champRaw ? getCanonicalChampionName(champRaw) : ''
+      const k = parseInt((row.querySelector('.edit-match-k') as HTMLInputElement)?.value ?? '0', 10) || 0
+      const d = parseInt((row.querySelector('.edit-match-d') as HTMLInputElement)?.value ?? '0', 10) || 0
+      const a = parseInt((row.querySelector('.edit-match-a') as HTMLInputElement)?.value ?? '0', 10) || 0
+      if (playerId) {
+        picks.push({ playerId, champion: champ })
+        kda.push({ playerId, kills: k, deaths: d, assists: a })
+      }
+    })
+    updateMatch(m.id, picks, kda)
+    currentEditMatch = null
+    root.classList.remove('open')
+  })
+  return root
+}
+
+function showEditMatchModal(m: Match) {
+  const root = document.getElementById('edit-match-modal')
+  const formEl = root?.querySelector('.edit-match-form')
+  if (!root || !formEl) return
+  currentEditMatch = m
+  const nameById = new Map(players.map((p) => [p.id, p.name]))
+  const allPlayerIds = [...m.winnerIds, ...m.loserIds]
+  const pickByPlayer = new Map(m.picks.map((p) => [p.playerId, p.champion]))
+  const kdaByPlayer = new Map((m.kda ?? []).map((e) => [e.playerId, e]))
+  const rows = allPlayerIds.map((playerId) => {
+    const name = nameById.get(playerId) ?? playerId
+    const champ = pickByPlayer.get(playerId) ?? ''
+    const kda = kdaByPlayer.get(playerId)
+    const k = kda?.kills ?? 0
+    const d = kda?.deaths ?? 0
+    const a = kda?.assists ?? 0
+    return `<div class="edit-match-row flex flex-wrap items-center gap-3 py-2 border-b border-slate-700/50">
+      <span class="edit-match-player-name min-w-[8rem] text-slate-200">${escapeHtml(name)}</span>
+      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">Campeão</span><input type="text" class="edit-match-champ rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" data-player-id="${escapeHtml(playerId)}" value="${escapeHtml(champ)}" placeholder="Campeão" /></label>
+      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">K</span><input type="number" class="edit-match-k rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${k}" min="0" /></label>
+      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">D</span><input type="number" class="edit-match-d rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${d}" min="0" /></label>
+      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">A</span><input type="number" class="edit-match-a rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${a}" min="0" /></label>
+    </div>`
+  }).join('')
+  formEl.innerHTML = rows
+  root.classList.add('open')
+}
+
 function showOtpDetailModal(
   champion: string,
   playerId: string,
@@ -1569,7 +1682,6 @@ function showOtpDetailModal(
       if (playerId === best?.playerId) badges.push('<span class="history-player-badge history-player-badge--positive">Melhor KDA</span>')
       if (playerId === worst?.playerId) badges.push('<span class="history-player-badge history-player-badge--negative">Pior KDA</span>')
     }
-    if (playerId === matchH.topDamageToChampionsPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais dano</span>')
     if (playerId === matchH.topHealedPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais curou</span>')
     if (playerId === matchH.topSelfMitigatedPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais tankou</span>')
     if (playerId === matchH.topDamageReceivedPlayerId) badges.push('<span class="history-player-badge history-player-badge--negative">Mais dano recebido</span>')
@@ -1629,7 +1741,6 @@ function computeIndividualHighlightCounts(matchList: Match[], ranking: PlayerSta
     inc(h.mvpPlayerId, 'MVP')
     inc(bestPlayerId, 'Melhor KDA')
     inc(worstPlayerId, 'Pior KDA')
-    inc(h.topDamageToChampionsPlayerId, 'Mais dano')
     inc(h.topDamageReceivedPlayerId, 'Mais dano rec.')
     inc(h.topHealedPlayerId, 'Mais curou')
     inc(h.topSelfMitigatedPlayerId, 'Mais tankou')

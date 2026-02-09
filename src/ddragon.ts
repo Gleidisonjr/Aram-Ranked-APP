@@ -9,6 +9,8 @@ const CHAMPION_LIST_URL = (version: string) =>
 
 let cachedVersion: string | null = null
 let cachedChampions: Map<string, string> | null = null
+/** Mapeia nome normalizado → ID canônico (ex: "varus" → "Varus") para estatísticas case-insensitive. */
+let cachedChampionIds: Map<string, string> | null = null
 
 function normalize(s: string): string {
   return s
@@ -32,6 +34,7 @@ export async function loadChampionData(): Promise<void> {
       data: Record<string, { id: string; name: string; image?: { full: string } }>
     }
     const map = new Map<string, string>()
+    const idMap = new Map<string, string>()
     for (const key of Object.keys(data.data || {})) {
       const champ = data.data[key]
       const id = champ.id
@@ -41,11 +44,29 @@ export async function loadChampionData(): Promise<void> {
       map.set(normalize(id), imageName)
       map.set(name, imageName)
       map.set(normalize(name), imageName)
+      idMap.set(normalize(id), id)
+      idMap.set(normalize(name), id)
     }
     cachedChampions = map
+    cachedChampionIds = idMap
   } catch (_) {
     cachedChampions = new Map()
+    cachedChampionIds = new Map()
   }
+}
+
+/**
+ * Retorna o nome canônico do campeão (case-insensitive).
+ * Ex: "varus", "VARUS" → "Varus". Usar ao salvar para que estatísticas e OTP funcionem corretamente.
+ */
+export function getCanonicalChampionName(input: string): string {
+  const trimmed = input?.trim()
+  if (!trimmed) return ''
+  if (cachedChampionIds) {
+    const canonical = cachedChampionIds.get(normalize(trimmed))
+    if (canonical) return canonical
+  }
+  return trimmed
 }
 
 /**

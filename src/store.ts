@@ -120,18 +120,22 @@ export function mergeRankingData(
     return `${w}|${l}`
   }
   const byContentKey = new Map<string, Match>()
-  // Quando o arquivo tem partidas, usa APENAS o arquivo (fonte única de verdade).
-  // Isso evita que localStorage antigo (ex: partida errada m-d1) sobreviva.
+  const localById = new Map(localMatches.map((m) => [m.id, m]))
+  // Usa partidas do arquivo; se houver edição no localStorage (mesmo id com picks/kda), mescla.
   const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches
   matchesToUse.forEach((m) => {
-    const key = matchContentKey(m)
+    const local = localById.get(m.id)
+    const merged: Match = local && (local.picks?.length || local.kda?.length)
+      ? { ...m, picks: local.picks ?? m.picks, kda: local.kda ?? m.kda }
+      : m
+    const key = matchContentKey(merged)
     const existing = byContentKey.get(key)
     if (!existing) {
-      byContentKey.set(key, m)
+      byContentKey.set(key, merged)
       return
     }
     const hasStats = (x: Match) => (x.matchExtendedStats?.length ?? 0) > 0
-    if (hasStats(m) && !hasStats(existing)) byContentKey.set(key, m)
+    if (hasStats(merged) && !hasStats(existing)) byContentKey.set(key, merged)
   })
   const rawMatches: Match[] = [...byContentKey.values()]
   rawMatches.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
@@ -364,7 +368,8 @@ export function getAllAchievementsByCategory(): Map<string, AchievementDef[]> {
 export function computeRanking(players: Player[], matches: Match[]): PlayerStats[] {
   const wins = new Map<string, number>()
   const losses = new Map<string, number>()
-  const championCount = new Map<string, Map<string, { count: number; wins: number; kills: number; deaths: number; assists: number }>>()
+  type ChampStats = { count: number; wins: number; kills: number; deaths: number; assists: number; displayChampion?: string }
+  const championCount = new Map<string, Map<string, ChampStats>>()
   const kdaAgg = new Map<string, { kills: number; deaths: number; assists: number; games: number }>()
 
   players.forEach((p) => {
@@ -383,7 +388,7 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
       const map = championCount.get(playerId)
       if (map && champion.trim()) {
         const key = champion.trim().toLowerCase()
-        const cur = map.get(key) ?? { count: 0, wins: 0, kills: 0, deaths: 0, assists: 0 }
+        const cur: ChampStats = map.get(key) ?? { count: 0, wins: 0, kills: 0, deaths: 0, assists: 0, displayChampion: '' }
         cur.count += 1
         if (winnerSet.has(playerId)) cur.wins += 1
         const kdaEntry = kdaByPlayer.get(playerId)
@@ -392,6 +397,7 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
           cur.deaths += kdaEntry.deaths
           cur.assists += kdaEntry.assists
         }
+        if (!cur.displayChampion) cur.displayChampion = champion.trim()
         map.set(key, cur)
       }
     })
@@ -431,8 +437,11 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
       const winRate = total > 0 ? ((w / total) * 100).toFixed(1) : '—'
       const champMap = championCount.get(player.id) ?? new Map()
       const championPlays = Array.from(champMap.entries())
-        .map(([champion, { count, wins, kills, deaths, assists }]) => {
+        .map(([key, data]) => {
+          const { count, wins, kills, deaths, assists } = data
+          const displayChampion = data.displayChampion ?? ''
           const ratio = deaths > 0 ? (kills + assists) / deaths : kills + assists
+          const champion = displayChampion || key
           return { champion, count, wins, kills, deaths, assists, ratio }
         })
         .sort((a, b) => {

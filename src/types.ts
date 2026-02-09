@@ -69,7 +69,7 @@ export interface PlayerStats {
   wins: number
   losses: number
   winRate: string
-  championPlays: { champion: string; count: number; wins: number; kills: number; deaths: number; assists: number; ratio: number }[]
+  championPlays: { champion: string; count: number; wins: number; kills: number; deaths: number; assists: number; ratio: number; lastMatchCreatedAt?: string }[]
   /** KDA agregado (soma de todas as partidas com KDA preenchido) */
   kda?: { kills: number; deaths: number; assists: number; games: number }
   /** Média KDA formatada (ex: "5.2 / 4.1 / 8.0") */

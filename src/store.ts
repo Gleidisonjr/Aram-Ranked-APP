@@ -23,6 +23,27 @@ export interface RankingData {
   matches: Match[]
 }
 
+/** URL da API para salvar o ranking permanentemente (Vercel). */
+const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.replace(/\/+$/, '')
+  ?? 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
+const SAVE_RANKING_API_URL = `${API_BASE}/api/save-ranking`
+
+/** Salva players e matches no servidor (ranking.json no GitHub). Retorna true se sucesso. */
+export async function saveRankingToServer(data: RankingData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(SAVE_RANKING_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (res.ok) return { ok: true }
+    return { ok: false, error: (json as { error?: string }).error || `Erro ${res.status}` }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
 /** Carrega dados do arquivo ranking.json (atualizado quando você envia o print no chat). */
 export async function loadFromFile(): Promise<RankingData | null> {
   try {
@@ -368,7 +389,7 @@ export function getAllAchievementsByCategory(): Map<string, AchievementDef[]> {
 export function computeRanking(players: Player[], matches: Match[]): PlayerStats[] {
   const wins = new Map<string, number>()
   const losses = new Map<string, number>()
-  type ChampStats = { count: number; wins: number; kills: number; deaths: number; assists: number; displayChampion?: string }
+  type ChampStats = { count: number; wins: number; kills: number; deaths: number; assists: number; displayChampion?: string; lastMatchCreatedAt?: string }
   const championCount = new Map<string, Map<string, ChampStats>>()
   const kdaAgg = new Map<string, { kills: number; deaths: number; assists: number; games: number }>()
 
@@ -379,7 +400,8 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
     kdaAgg.set(p.id, { kills: 0, deaths: 0, assists: 0, games: 0 })
   })
 
-  matches.forEach((m) => {
+  const matchesChronological = [...matches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  matchesChronological.forEach((m) => {
     m.winnerIds.forEach((id) => wins.set(id, (wins.get(id) ?? 0) + 1))
     m.loserIds.forEach((id) => losses.set(id, (losses.get(id) ?? 0) + 1))
     const winnerSet = new Set(m.winnerIds)
@@ -391,6 +413,7 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
         const cur: ChampStats = map.get(key) ?? { count: 0, wins: 0, kills: 0, deaths: 0, assists: 0, displayChampion: '' }
         cur.count += 1
         if (winnerSet.has(playerId)) cur.wins += 1
+        cur.lastMatchCreatedAt = m.createdAt ?? cur.lastMatchCreatedAt
         const kdaEntry = kdaByPlayer.get(playerId)
         if (kdaEntry) {
           cur.kills += kdaEntry.kills
@@ -438,17 +461,17 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
       const champMap = championCount.get(player.id) ?? new Map()
       const championPlays = Array.from(champMap.entries())
         .map(([key, data]) => {
-          const { count, wins, kills, deaths, assists } = data
+          const { count, wins, kills, deaths, assists, lastMatchCreatedAt } = data
           const displayChampion = data.displayChampion ?? ''
           const ratio = deaths > 0 ? (kills + assists) / deaths : kills + assists
           const champion = displayChampion || key
-          return { champion, count, wins, kills, deaths, assists, ratio }
+          return { champion, count, wins, kills, deaths, assists, ratio, lastMatchCreatedAt }
         })
         .sort((a, b) => {
           if (b.count !== a.count) return b.count - a.count
-          const rateA = a.count > 0 ? a.wins / a.count : 0
-          const rateB = b.count > 0 ? b.wins / b.count : 0
-          return rateB - rateA
+          const lastA = a.lastMatchCreatedAt ?? ''
+          const lastB = b.lastMatchCreatedAt ?? ''
+          return lastB.localeCompare(lastA)
         })
       const kda = kdaAgg.get(player.id)!
       const hasKda = kda.games > 0

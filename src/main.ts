@@ -12,6 +12,7 @@ import {
   saveSeason,
   getAchievementDef,
   findPlayerByName,
+  saveRankingToServer,
 } from './store'
 // import type { ImportPrintData } from './store' // usado na createPrintImportSection (comentada)
 import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls, getCanonicalChampionName } from './ddragon'
@@ -42,18 +43,6 @@ async function init() {
   saveMatches(matches)
   await loadChampionData()
   rerender()
-}
-
-function exportRankingJson() {
-  const data = { players, matches }
-  const json = JSON.stringify(data, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'ranking.json'
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 async function restoreFromFile() {
@@ -116,13 +105,17 @@ function addMatch(winnerIds: string[], loserIds: string[], picks: ChampionPick[]
   return match
 }
 
-function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[]) {
+async function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[]) {
   const idx = matches.findIndex((m) => m.id === matchId)
   if (idx < 0) return
   matches = [...matches]
   matches[idx] = { ...matches[idx], picks, kda: kda.length ? kda : undefined }
   saveMatches(matches)
   rerender()
+  const result = await saveRankingToServer({ players, matches })
+  if (!result.ok) {
+    console.warn('Salvo localmente. Persistência no servidor falhou:', result.error)
+  }
 }
 
 function renderApp(ranking: PlayerStats[]) {
@@ -361,6 +354,7 @@ function createLayout(ranking: PlayerStats[]) {
     // createPrintImportSection(), // Desativado: partidas por print só via chat → eu adiciono no ranking.json
     createChampionStatsSection(ranking),
     createBestPlayerPerChampionSection(ranking, matches),
+    createRecordsSection(filteredMatches, ranking),
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
     modal,
@@ -435,7 +429,10 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
     (best, c) => {
       const rate = c.wins / c.count
       if (!best) return c
-      return rate > best.wins / best.count ? c : best
+      const bestRate = best.wins / best.count
+      if (rate > bestRate) return c
+      if (rate < bestRate) return best
+      return (c.ratio ?? 0) >= (best.ratio ?? 0) ? c : best
     },
     null
   )
@@ -443,7 +440,7 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
   const bestChampIcon = bestChamp ? getChampionIconUrl(bestChamp.champion) : null
   const championsHtml = (mostPlayed || bestChamp)
     ? `<div class="profile-champions">
-        <h4>Campeões</h4>
+        <h4>Campeões mais utilizados</h4>
         <div class="profile-champion-rows">
           ${mostPlayed ? `<div class="profile-champion-row"><span class="profile-champion-label">Mais jogado</span>${mostPlayedIcon ? `<img class="profile-champion-icon" src="${escapeHtml(mostPlayedIcon)}" alt="" width="28" height="28" />` : ''}<span>${escapeHtml(mostPlayed.champion)}</span> <span class="profile-champion-count">${mostPlayed.count}x</span></div>` : ''}
           ${bestChamp ? `<div class="profile-champion-row"><span class="profile-champion-label">Melhor (win rate)</span>${bestChampIcon ? `<img class="profile-champion-icon" src="${escapeHtml(bestChampIcon)}" alt="" width="28" height="28" />` : ''}<span>${escapeHtml(bestChamp.champion)}</span> <span class="profile-champion-count">${((bestChamp.wins / bestChamp.count) * 100).toFixed(0)}%</span></div>` : ''}
@@ -487,7 +484,6 @@ function createToolbar() {
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const adminToolsHtml = isAdminMode()
     ? `<button type="button" class="btn btn-secondary btn-sm btn-restore" title="Recarregar jogadores e partidas do ranking.json">Restaurar dados</button>
-       <button type="button" class="btn btn-secondary btn-sm btn-export" title="Baixar ranking.json com os dados atuais (para substituir public/ranking.json)">Exportar ranking.json</button>
        <button type="button" class="btn btn-secondary btn-sm btn-new-season">Nova temporada</button>`
     : ''
   bar.innerHTML = `
@@ -499,7 +495,6 @@ function createToolbar() {
     </div>
   `
   bar.querySelector('.btn-restore')?.addEventListener('click', () => restoreFromFile())
-  bar.querySelector('.btn-export')?.addEventListener('click', () => exportRankingJson())
   bar.querySelector('.btn-new-season')?.addEventListener('click', startNewSeason)
   return bar
 }
@@ -754,7 +749,9 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
         const rate = c.wins / c.count
         if (!best) return c
         const bestRate = best.wins / best.count
-        return rate > bestRate ? c : best
+        if (rate > bestRate) return c
+        if (rate < bestRate) return best
+        return (c.ratio ?? 0) >= (best.ratio ?? 0) ? c : best
       }, null)
     const tierClass = s.patenteTier ? ` patente-${s.patenteTier}` : ''
     const rankEmblemUrl = getRankEmblemUrl(s.patenteTier)
@@ -1288,7 +1285,7 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
     <div class="champion-section-bg"${picksSplashStyle} aria-hidden="true"></div>
     <div class="champion-section-overlay"></div>
     <div class="champion-section-inner">
-      <h2>Champions More Used</h2>
+      <h2>Campeões mais utilizados</h2>
       <div class="champion-grid"></div>
     </div>
   `
@@ -1299,9 +1296,7 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
     card.className = 'champion-card'
     const sortedChamps = [...s.championPlays].sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count
-      const rateA = a.count > 0 ? a.wins / a.count : 0
-      const rateB = b.count > 0 ? b.wins / b.count : 0
-      if (rateB !== rateA) return rateB - rateA
+      if (b.wins !== a.wins) return b.wins - a.wins
       const ratioA = typeof a.ratio === 'number' ? a.ratio : 0
       const ratioB = typeof b.ratio === 'number' ? b.ratio : 0
       if (ratioB !== ratioA) return ratioB - ratioA
@@ -1585,7 +1580,7 @@ function createEditMatchModal(): HTMLElement {
   root.querySelector('.profile-modal-overlay')!.addEventListener('click', () => root.classList.remove('open'))
   root.querySelector('.profile-modal-close')!.addEventListener('click', () => root.classList.remove('open'))
   root.querySelector('.edit-match-cancel')!.addEventListener('click', () => root.classList.remove('open'))
-  root.querySelector('.edit-match-save')!.addEventListener('click', () => {
+  root.querySelector('.edit-match-save')!.addEventListener('click', async () => {
     const m = currentEditMatch
     if (!m) return
     const formEl = root.querySelector('.edit-match-form')
@@ -1605,7 +1600,7 @@ function createEditMatchModal(): HTMLElement {
         kda.push({ playerId, kills: k, deaths: d, assists: a })
       }
     })
-    updateMatch(m.id, picks, kda)
+    await updateMatch(m.id, picks, kda)
     currentEditMatch = null
     root.classList.remove('open')
   })
@@ -1715,6 +1710,178 @@ function showOtpDetailModal(
     `}
   `
   root.classList.add('open')
+}
+
+/** Recordes: quantas vezes cada jogador foi destaque na partida. */
+function computeRecordsCounts(matchList: Match[], ranking: PlayerStats[]) {
+  const initMap = () => {
+    const m = new Map<string, number>()
+    ranking.forEach((s) => m.set(s.player.id, 0))
+    return m
+  }
+  const mostKillsCount = initMap()
+  const mostDeathsCount = initMap()
+  const mostAssistsCount = initMap()
+  const mvpCount = initMap()
+  const bestKdaCount = initMap()
+  const worstKdaCount = initMap()
+  const topDamageCount = initMap()
+  const topDamageReceivedCount = initMap()
+  const topHealedCount = initMap()
+  const topMitigatedCount = initMap()
+  const topDamageToTowersCount = initMap()
+  const topKillStreakCount = initMap()
+  const topMultikillCount = initMap()
+  const topGoldCount = initMap()
+  const topCsCount = initMap()
+
+  for (const m of matchList) {
+    const kdaList = m.kda ?? []
+    const h = getMatchHighlightIds(m)
+
+    if (kdaList.length > 0) {
+      const maxKills = Math.max(...kdaList.map((e) => e.kills))
+      const maxDeaths = Math.max(...kdaList.map((e) => e.deaths))
+      const maxAssists = Math.max(...kdaList.map((e) => e.assists))
+      kdaList.forEach((e) => {
+        if (e.kills === maxKills) mostKillsCount.set(e.playerId, (mostKillsCount.get(e.playerId) ?? 0) + 1)
+        if (e.deaths === maxDeaths) mostDeathsCount.set(e.playerId, (mostDeathsCount.get(e.playerId) ?? 0) + 1)
+        if (e.assists === maxAssists) mostAssistsCount.set(e.playerId, (mostAssistsCount.get(e.playerId) ?? 0) + 1)
+      })
+      const withRatio = kdaList.map((e) => ({ playerId: e.playerId, ratio: (e.kills + e.assists) / Math.max(e.deaths, 1) }))
+      const best = withRatio.reduce((a, b) => (b.ratio > a.ratio ? b : a), withRatio[0])
+      const worst = withRatio.reduce((a, b) => (b.ratio < a.ratio ? b : a), withRatio[0])
+      if (best) bestKdaCount.set(best.playerId, (bestKdaCount.get(best.playerId) ?? 0) + 1)
+      if (worst) worstKdaCount.set(worst.playerId, (worstKdaCount.get(worst.playerId) ?? 0) + 1)
+    }
+    if (h.mvpPlayerId) mvpCount.set(h.mvpPlayerId, (mvpCount.get(h.mvpPlayerId) ?? 0) + 1)
+    if (h.topDamageReceivedPlayerId) topDamageReceivedCount.set(h.topDamageReceivedPlayerId, (topDamageReceivedCount.get(h.topDamageReceivedPlayerId) ?? 0) + 1)
+    if (h.topHealedPlayerId) topHealedCount.set(h.topHealedPlayerId, (topHealedCount.get(h.topHealedPlayerId) ?? 0) + 1)
+    if (h.topSelfMitigatedPlayerId) topMitigatedCount.set(h.topSelfMitigatedPlayerId, (topMitigatedCount.get(h.topSelfMitigatedPlayerId) ?? 0) + 1)
+    if (h.topDamageToTowersPlayerId) topDamageToTowersCount.set(h.topDamageToTowersPlayerId, (topDamageToTowersCount.get(h.topDamageToTowersPlayerId) ?? 0) + 1)
+    if (h.topKillStreakPlayerId) topKillStreakCount.set(h.topKillStreakPlayerId, (topKillStreakCount.get(h.topKillStreakPlayerId) ?? 0) + 1)
+    if (h.topMultikillPlayerId) topMultikillCount.set(h.topMultikillPlayerId, (topMultikillCount.get(h.topMultikillPlayerId) ?? 0) + 1)
+    const stats = m.matchExtendedStats ?? []
+    if (stats.length > 0) {
+      let maxDmg = 0
+      let maxGold = 0
+      let maxCs = 0
+      let topDmgId: string | null = null
+      let topGoldId: string | null = null
+      let topCsId: string | null = null
+      stats.forEach((s) => {
+        const d = s.damageToChampions ?? 0
+        const g = s.goldEarned ?? 0
+        const cs = s.minionsKilled ?? 0
+        if (d > maxDmg) { maxDmg = d; topDmgId = s.playerId }
+        if (g > maxGold) { maxGold = g; topGoldId = s.playerId }
+        if (cs > maxCs) { maxCs = cs; topCsId = s.playerId }
+      })
+      if (topDmgId) topDamageCount.set(topDmgId, (topDamageCount.get(topDmgId) ?? 0) + 1)
+      if (topGoldId) topGoldCount.set(topGoldId, (topGoldCount.get(topGoldId) ?? 0) + 1)
+      if (topCsId) topCsCount.set(topCsId, (topCsCount.get(topCsId) ?? 0) + 1)
+    }
+  }
+  return {
+    mostKillsCount,
+    mostDeathsCount,
+    mostAssistsCount,
+    mvpCount,
+    bestKdaCount,
+    worstKdaCount,
+    topDamageCount,
+    topDamageReceivedCount,
+    topHealedCount,
+    topMitigatedCount,
+    topDamageToTowersCount,
+    topKillStreakCount,
+    topMultikillCount,
+    topGoldCount,
+    topCsCount,
+  }
+}
+
+/** Splash art por tipo de recorde (campeões ainda não usados em Destaques/Ranking/OTP). */
+const RECORD_SPLASH: Record<string, string> = {
+  'Mais abates na partida': 'Katarina',
+  'Mais mortes na partida': 'Aatrox',
+  'Mais assistências na partida': 'Sona',
+  'Mais MVP': 'Ahri',
+  'Mais dano na partida': 'Zed',
+  'Melhor KDA na partida': 'Riven',
+  'Pior KDA na partida': 'Mordekaiser',
+  'Mais dano recebido': 'Garen',
+  'Mais curou': 'Soraka',
+  'Mais tankou': 'Malphite',
+  'Mais dano a torres': 'Tristana',
+  'Maior sequência de abates': 'Pyke',
+  'Maior multiabate': 'Darius',
+  'Mais ouro na partida': 'Gangplank',
+  'Mais CS na partida': 'Sivir',
+}
+
+function createRecordsSection(matchList: Match[], ranking: PlayerStats[]) {
+  const section = document.createElement('section')
+  section.className = 'card records-section'
+  const recBgUrl = getChampionSplashUrl('Jhin', 2) ?? ''
+  const recBgStyle = recBgUrl ? ` style="background-image: url(${escapeHtml(recBgUrl)})"` : ''
+  const nameById = new Map<string, string>()
+  ranking.forEach((s) => nameById.set(s.player.id, s.player.name))
+
+  const counts = computeRecordsCounts(matchList, ranking)
+  const toSorted = (map: Map<string, number>) => [...map.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+  const getTop = (entries: [string, number][]): { playerId: string; count: number } | null => {
+    if (entries.length === 0) return null
+    const [playerId, count] = entries[0]
+    return { playerId, count }
+  }
+  type RecordDef = { label: string; entries: [string, number][]; theme: 'positive' | 'negative' | 'neutral' }
+  const records: RecordDef[] = [
+    { label: 'Mais abates na partida', entries: toSorted(counts.mostKillsCount), theme: 'positive' },
+    { label: 'Mais mortes na partida', entries: toSorted(counts.mostDeathsCount), theme: 'negative' },
+    { label: 'Mais assistências na partida', entries: toSorted(counts.mostAssistsCount), theme: 'positive' },
+    { label: 'Mais MVP', entries: toSorted(counts.mvpCount), theme: 'positive' },
+    { label: 'Mais dano na partida', entries: toSorted(counts.topDamageCount), theme: 'positive' },
+    { label: 'Melhor KDA na partida', entries: toSorted(counts.bestKdaCount), theme: 'positive' },
+    { label: 'Pior KDA na partida', entries: toSorted(counts.worstKdaCount), theme: 'negative' },
+    { label: 'Mais dano recebido', entries: toSorted(counts.topDamageReceivedCount), theme: 'negative' },
+    { label: 'Mais curou', entries: toSorted(counts.topHealedCount), theme: 'positive' },
+    { label: 'Mais tankou', entries: toSorted(counts.topMitigatedCount), theme: 'positive' },
+    { label: 'Mais dano a torres', entries: toSorted(counts.topDamageToTowersCount), theme: 'positive' },
+    { label: 'Maior sequência de abates', entries: toSorted(counts.topKillStreakCount), theme: 'positive' },
+    { label: 'Maior multiabate', entries: toSorted(counts.topMultikillCount), theme: 'positive' },
+    { label: 'Mais ouro na partida', entries: toSorted(counts.topGoldCount), theme: 'neutral' },
+    { label: 'Mais CS na partida', entries: toSorted(counts.topCsCount), theme: 'neutral' },
+  ]
+  const itemsHtml = records
+    .map((r) => {
+      const top = getTop(r.entries)
+      const bgChamp = RECORD_SPLASH[r.label] ?? 'Lux'
+      const bgUrl = getChampionSplashUrl(bgChamp, 1) ?? ''
+      const bgStyle = bgUrl ? ` style="background-image: url(${escapeHtml(bgUrl)})"` : ''
+      const theme = r.theme
+      const badgeClass = theme === 'positive' ? 'highlight-badge--positive' : theme === 'negative' ? 'highlight-badge--negative' : 'highlight-badge--neutral'
+      const content =
+        top && top.count > 0
+          ? `<span class="records-name">${escapeHtml(nameById.get(top.playerId) ?? top.playerId)}</span><span class="records-count highlight-badge ${badgeClass}">${top.count}x</span>`
+          : '<span class="records-empty">—</span>'
+      return `<div class="records-item records-item--${theme}">
+        <div class="records-item-bg"${bgStyle} aria-hidden="true"></div>
+        <div class="records-item-overlay"></div>
+        <span class="records-label">${escapeHtml(r.label)}</span>
+        <div class="records-content">${content}</div>
+      </div>`
+    })
+    .join('')
+
+  section.innerHTML = `
+    <div class="records-section-bg"${recBgStyle} aria-hidden="true"></div>
+    <div class="records-section-overlay"></div>
+    <h2>Recordes</h2>
+    <p class="records-hint">Jogador que mais vezes foi destaque em cada categoria (dados do histórico de partidas).</p>
+    <div class="records-grid">${itemsHtml}</div>
+  `
+  return section
 }
 
 /** Conta quantas vezes cada jogador teve cada destaque (MVP, melhor KDA, etc.). */

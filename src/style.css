@@ -1318,6 +1318,11 @@ body {
   text-transform: capitalize;
   min-width: 0;
 }
+.best-champ-card-header .best-champ-score-box {
+  margin-bottom: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .best-champ-score-box {
   display: inline-flex;
   align-items: baseline;

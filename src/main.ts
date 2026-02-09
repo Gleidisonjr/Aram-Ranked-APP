@@ -343,22 +343,20 @@ function createLayout(ranking: PlayerStats[]) {
   const filteredMatches = matchLimit != null ? matches.slice(0, matchLimit) : matches
   const highlightsData = computeHighlightsData(ranking, filteredMatches)
   lastHighlightsData = highlightsData
+  // Ordem: Ranking → Sortear times → Destaques → Recordes → Histórico → Comparar jogadores → Comparar campeões → OTP por campeão → Estatísticas por campeão → Gráficos
   el.append(
     createHeader(),
     createToolbar(),
-    createHighlightsSection(ranking, highlightsData),
     createRankingSection(ranking, highlightsData),
-    // createActivitySection(), // TODO: reativar depois com features corretas
     createSortearTimesSection(),
-    createHistorySection(),
-    // createRiotMatchSection(), // Removido por enquanto. Reativar quando for usar "Adicionar partida" via Match ID.
-    // createPrintImportSection(), // Desativado: partidas por print só via chat → eu adiciono no ranking.json
-    createComparePlayersSection(ranking, filteredMatches, highlightsData),
-    createChampionStatsSection(ranking),
-    createBestPlayerPerChampionSection(ranking, matches),
-    createCompareChampionsSection(ranking, filteredMatches),
-    createGraphicsSection(ranking, filteredMatches),
+    createHighlightsSection(ranking, highlightsData),
     createRecordsSection(filteredMatches, ranking),
+    createHistorySection(),
+    createComparePlayersSection(ranking, filteredMatches, highlightsData),
+    createCompareChampionsSection(ranking, filteredMatches),
+    createBestPlayerPerChampionSection(ranking, matches),
+    createChampionStatsSection(ranking),
+    createGraphicsSection(ranking, filteredMatches),
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
     modal,
@@ -2077,13 +2075,14 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
           primaryUrl || fallbackUrl
             ? `<img class="best-champ-card-bg-img" src="${escapeHtml(primaryUrl)}" data-fallback="${escapeHtml(fallbackUrl)}" alt="" />`
             : ''
-        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score: ${item.score100}">
+        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score OTP: ${item.score100}">
           <div class="best-champ-card-bg" aria-hidden="true">${imgHtml}</div>
           <div class="best-champ-card-overlay"></div>
           <div class="best-champ-card-inner">
             <div class="best-champ-card-header">
               ${iconHtml}
               <span class="best-champ-name">${escapeHtml(item.champion)}</span>
+              <span class="best-champ-score-box" title="Score OTP 0–100"><span class="best-champ-score-label">Score</span><span class="best-champ-score">${item.score100}</span></span>
             </div>
             <div class="best-champ-player">${escapeHtml(item.playerName)}${item.tagsHtml}</div>
           </div>
@@ -2120,11 +2119,11 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
         const primaryUrl = urls?.primary ?? ''
         const fallbackUrl = urls?.fallback ?? primaryUrl
         const imgHtml = primaryUrl || fallbackUrl ? `<img class="best-champ-card-bg-img" src="${escapeHtml(primaryUrl)}" data-fallback="${escapeHtml(fallbackUrl)}" alt="" />` : ''
-        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score: ${item.score100}">
+        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score OTP: ${item.score100}">
           <div class="best-champ-card-bg" aria-hidden="true">${imgHtml}</div>
           <div class="best-champ-card-overlay"></div>
           <div class="best-champ-card-inner">
-            <div class="best-champ-card-header">${iconHtml}<span class="best-champ-name">${escapeHtml(item.champion)}</span></div>
+            <div class="best-champ-card-header">${iconHtml}<span class="best-champ-name">${escapeHtml(item.champion)}</span><span class="best-champ-score-box" title="Score OTP 0–100"><span class="best-champ-score-label">Score</span><span class="best-champ-score">${item.score100}</span></span></div>
             <div class="best-champ-player">${escapeHtml(item.playerName)}${item.tagsHtml}</div>
           </div>
         </div>`

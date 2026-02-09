@@ -50,10 +50,16 @@ export async function loadFromFile(): Promise<RankingData | null> {
   try {
     const url = `${RANKING_JSON_URL}?t=${Date.now()}`
     const res = await fetch(url)
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn(`ranking.json: HTTP ${res.status} em ${url}`)
+      return null
+    }
     const data = await res.json() as RankingData
     if (Array.isArray(data.players) && Array.isArray(data.matches)) return data
-  } catch (_) {}
+    console.warn('ranking.json: formato inválido (players/matches ausentes)')
+  } catch (e) {
+    console.warn('ranking.json: falha ao carregar', e)
+  }
   return null
 }
 
@@ -168,8 +174,15 @@ export function mergeRankingData(
   const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches
   matchesToUse.forEach((m) => {
     const local = localById.get(m.id)
-    const merged: Match = local && (local.picks?.length || local.kda?.length)
-      ? { ...m, picks: local.picks ?? m.picks, kda: local.kda ?? m.kda }
+    const filePicks = m.picks ?? []
+    const fileKda = m.kda ?? []
+    const localPicks = local?.picks ?? []
+    const localKda = local?.kda ?? []
+    // Prefer the source with more complete data (covers more players)
+    const useLocalPicks = localPicks.length > filePicks.length || (localPicks.length > 0 && filePicks.length === 0)
+    const useLocalKda = localKda.length > fileKda.length || (localKda.length > 0 && fileKda.length === 0)
+    const merged: Match = local && (useLocalPicks || useLocalKda)
+      ? { ...m, picks: useLocalPicks ? localPicks : filePicks, kda: useLocalKda ? localKda : fileKda }
       : m
     const key = matchContentKey(merged)
     const existing = byContentKey.get(key)
@@ -215,10 +228,14 @@ export function mergeRankingData(
     if (canonical) idToCanonical.set(p.id, canonical)
   })
 
+  const remapId = (id: string) => idToCanonical.get(id) ?? id
   const matches: Match[] = rawMatches.map((m) => ({
     ...m,
-    winnerIds: m.winnerIds.map((id) => idToCanonical.get(id) ?? id),
-    loserIds: m.loserIds.map((id) => idToCanonical.get(id) ?? id),
+    winnerIds: m.winnerIds.map(remapId),
+    loserIds: m.loserIds.map(remapId),
+    picks: (m.picks ?? []).map((p) => ({ ...p, playerId: remapId(p.playerId) })),
+    kda: (m.kda ?? []).map((e) => ({ ...e, playerId: remapId(e.playerId) })),
+    matchExtendedStats: (m.matchExtendedStats ?? []).map((s) => ({ ...s, playerId: remapId(s.playerId) })),
   }))
 
   const canonicalIds = new Set(canonicalIdByName.values())

@@ -849,7 +849,7 @@ body {
 .ranking-card-row .kda-ratio-val.kda-ratio--pos { color: var(--win); font-weight: 600; }
 .ranking-card-row .kda-ratio-val.kda-ratio--neg { color: var(--loss); font-weight: 600; }
 .ranking-card-row .kda-ratio-val.kda-ratio--elite { color: #fbbf24; font-weight: 700; }
-.ranking-card-body .ranking-card-row > span:not(.vd-wins):not(.vd-sep):not(.vd-losses):not(.last-results-cell):not(.top-champ):not(.kda-colored) { color: #fff; }
+.ranking-card-body .ranking-card-row > span:not(.vd-wins):not(.vd-sep):not(.vd-losses):not(.last-results-cell):not(.top-champ):not(.kda-colored):not(.winrate-val):not(.kda-ratio-val) { color: #fff; }
 .ranking-card-row .last-results-cell {
   display: inline-flex;
   gap: 2px;

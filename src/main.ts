@@ -488,6 +488,7 @@ function createToolbar() {
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const adminToolsHtml = isAdminMode()
     ? `<button type="button" class="btn btn-secondary btn-sm btn-restore" title="Recarregar jogadores e partidas do ranking.json">Restaurar dados</button>
+       <button type="button" class="btn btn-secondary btn-sm btn-save-server" title="Enviar dados atuais para o servidor (atualiza ranking.json no GitHub)">Salvar no servidor</button>
        <button type="button" class="btn btn-secondary btn-sm btn-new-season">Nova temporada</button>`
     : ''
   bar.innerHTML = `
@@ -499,6 +500,18 @@ function createToolbar() {
     </div>
   `
   bar.querySelector('.btn-restore')?.addEventListener('click', () => restoreFromFile())
+  bar.querySelector('.btn-save-server')?.addEventListener('click', async () => {
+    const btn = bar.querySelector('.btn-save-server')
+    if (btn instanceof HTMLButtonElement) {
+      btn.disabled = true
+      btn.textContent = 'Salvando…'
+      const result = await saveRankingToServer({ players, matches })
+      btn.disabled = false
+      btn.textContent = 'Salvar no servidor'
+      if (result.ok) alert('Ranking salvo no servidor.')
+      else alert(`Erro ao salvar: ${result.error}`)
+    }
+  })
   bar.querySelector('.btn-new-season')?.addEventListener('click', startNewSeason)
   return bar
 }
@@ -1024,7 +1037,7 @@ function createHistorySection() {
           <span class="history-match-toggle" aria-hidden="true"></span>
           <span class="history-num" title="Partida ${partidaNum} de ${total}">#${partidaNum}</span>
           <span class="history-date">${escapeHtml(dateStr)}</span>
-          <button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar campeão e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>
+          ${isAdminMode() ? `<button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar campeão e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>` : ''}
         </div>
         <div class="history-match-body">
           ${m.imageUrl ? `

@@ -1609,14 +1609,20 @@ function createCompareChampionsSection(ranking: PlayerStats[], matchList: Match[
     const icon2 = getChampionIconUrl(c2.display)
     const iconHtml = (url: string | null) => url ? `<img class="compare-champ-icon" src="${escapeHtml(url)}" alt="" width="40" height="40" />` : ''
     const splash2 = getChampionSplashUrl('Vi', 1) ?? ''
+    const splash1 = getChampionSplashUrl(c1.display, 1) ?? ''
+    const splash3 = getChampionSplashUrl(c2.display, 1) ?? ''
     resultEl.innerHTML = `
       <div class="compare-champions-cards">
-        <div class="compare-champ-card">
-          <div class="compare-champ-card-header">${iconHtml(icon1)}<span>${escapeHtml(c1.display)}</span></div>
+        <div class="compare-champ-card compare-champ-card--splash">
+          <div class="compare-champ-card-bg" style="background-image: url(${escapeHtml(splash1)})" aria-hidden="true"></div>
+          <div class="compare-champ-card-overlay"></div>
+          <div class="compare-champ-card-inner">
+            <div class="compare-champ-card-header">${iconHtml(icon1)}<span>${escapeHtml(c1.display)}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c1.total}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c1.wins}</span></div>
           <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate1) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate1}%</span></div>
           <div class="compare-champ-stat compare-champ-best"><span class="compare-champ-label">Melhor jogador</span><span class="compare-champ-best-player">${bestPlayerHtml(c1.bestPlayerId, c1.bestPlayerName)}</span></div>
+          </div>
         </div>
         <div class="compare-champ-card compare-champ-card-vs compare-champ-card-head">
           <div class="compare-champ-card-bg" style="background-image: url(${escapeHtml(splash2)})" aria-hidden="true"></div>
@@ -1627,12 +1633,16 @@ function createCompareChampionsSection(ranking: PlayerStats[], matchList: Match[
             ${togetherText}
           </div>
         </div>
-        <div class="compare-champ-card">
-          <div class="compare-champ-card-header">${iconHtml(icon2)}<span>${escapeHtml(c2.display)}</span></div>
-          <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c2.total}</span></div>
-          <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c2.wins}</span></div>
-          <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate2) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate2}%</span></div>
-          <div class="compare-champ-stat compare-champ-best"><span class="compare-champ-label">Melhor jogador</span><span class="compare-champ-best-player">${bestPlayerHtml(c2.bestPlayerId, c2.bestPlayerName)}</span></div>
+        <div class="compare-champ-card compare-champ-card--splash">
+          <div class="compare-champ-card-bg" style="background-image: url(${escapeHtml(splash3)})" aria-hidden="true"></div>
+          <div class="compare-champ-card-overlay"></div>
+          <div class="compare-champ-card-inner">
+            <div class="compare-champ-card-header">${iconHtml(icon2)}<span>${escapeHtml(c2.display)}</span></div>
+            <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c2.total}</span></div>
+            <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c2.wins}</span></div>
+            <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate2) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate2}%</span></div>
+            <div class="compare-champ-stat compare-champ-best"><span class="compare-champ-label">Melhor jogador</span><span class="compare-champ-best-player">${bestPlayerHtml(c2.bestPlayerId, c2.bestPlayerName)}</span></div>
+          </div>
         </div>
       </div>
     `
@@ -1743,13 +1753,13 @@ function createGraphicsSection(ranking: PlayerStats[], matches: Match[]) {
                   return `${x},${y}`
                 }).join(' ')}" /></svg>
                 ${eloSteps.map((step, i) => {
-                  const label = getEloByStep(step).label
+                  const { label, tier } = getEloByStep(step)
                   const divisor = Math.max(1, n - 1)
                   const leftPct = n <= 1 ? 50 : (i / divisor) * 100
                   const bottomPct = maxStep > 0 ? (step / maxStep) * 100 : 0
                   return `<div class="graphics-point-wrap" style="left: ${leftPct}%; bottom: ${bottomPct}%;" title="Partida ${i + 1}: ${escapeHtml(label)}">
                     <span class="graphics-point graphics-point-elo"></span>
-                    <span class="graphics-point-label graphics-elo-label">${escapeHtml(label)}</span>
+                    <span class="graphics-point-label graphics-elo-label graphics-elo-label--${tier}">${escapeHtml(label)}</span>
                   </div>`
                 }).join('')}
               </div>
@@ -1849,7 +1859,8 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
         const winRateStr = `${winPct}% (${wins}V ${losses}D)`
         const winRateClass = c.count > 0 ? (wins / c.count >= 0.5 ? 'champ-winrate--positive' : 'champ-winrate--negative') : ''
         const ratioStr = typeof c.ratio === 'number' && !Number.isNaN(c.ratio) ? c.ratio.toFixed(1) : '—'
-        return `<div class="champ-row">${imgHtml}<span class="champ-name">${escapeHtml(c.champion)}</span><span class="champ-count">${c.count}x</span><span class="champ-winrate ${winRateClass}" title="${escapeHtml(winRateStr)}">${winPct}%</span><span class="champ-ratio" title="(K+A)/D">${ratioStr}</span></div>`
+        const vdHtml = `<span class="champ-v champ-v-wins">${wins}</span><span class="champ-v-sep">–</span><span class="champ-v champ-v-losses">${losses}</span>`
+        return `<div class="champ-row">${imgHtml}<span class="champ-name">${escapeHtml(c.champion)}</span><span class="champ-count">${c.count}x</span><span class="champ-vd">${vdHtml}</span><span class="champ-winrate ${winRateClass}" title="${escapeHtml(winRateStr)}">${winPct}%</span><span class="champ-ratio" title="(K+A)/D">${ratioStr}</span></div>`
       })
       .join('')
     const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span> <span class="player-badge-boss">Boss</span>` : escapeHtml(s.player.name)
@@ -1864,7 +1875,7 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
       </div>
       <div class="champion-card-body">
         <div class="champ-list">
-          <div class="champ-row champ-row--header champ-row--white"><span class="champ-name">Champion</span><span class="champ-count">Picks</span><span class="champ-winrate">Win</span><span class="champ-ratio">Ratio</span></div>
+          <div class="champ-row champ-row--header champ-row--white"><span class="champ-name">Champion</span><span class="champ-count">Picks</span><span class="champ-vd">V–D</span><span class="champ-winrate">Win</span><span class="champ-ratio">Ratio</span></div>
           ${rows}
         </div>
       </div>

@@ -3,6 +3,7 @@ import type { Player, Match, PlayerStats } from './types'
 const PLAYERS_KEY = 'ranking-cabare-players'
 const MATCHES_KEY = 'ranking-cabare-matches'
 const SEASON_KEY = 'ranking-cabare-season'
+const RIVALS_KEY = 'ranking-cabare-rivals'
 const RANKING_JSON_URL = `${import.meta.env.BASE_URL}ranking.json`
 
 /** Nomes antigos/duplicados que não devem aparecer no ranking. */
@@ -109,6 +110,27 @@ export function loadSeason(): string {
 
 export function saveSeason(season: string): void {
   localStorage.setItem(SEASON_KEY, season)
+}
+
+/** Pares de rivais: [[id1, id2], ...] — ordem alfabética dos IDs para evitar duplicatas. */
+export function loadRivals(): [string, string][] {
+  try {
+    const raw = localStorage.getItem(RIVALS_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw) as unknown[]
+      if (Array.isArray(arr)) {
+        return arr.filter((x): x is [string, string] =>
+          Array.isArray(x) && x.length === 2 && typeof x[0] === 'string' && typeof x[1] === 'string'
+        ).map(([a, b]) => (a < b ? [a, b] : [b, a]))
+      }
+    }
+  } catch (_) {}
+  return []
+}
+
+export function saveRivals(rivals: [string, string][]): void {
+  const normalized = rivals.map(([a, b]) => (a < b ? [a, b] : [b, a]))
+  localStorage.setItem(RIVALS_KEY, JSON.stringify(normalized))
 }
 
 /**
@@ -371,6 +393,12 @@ const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'iniciante', name: 'Iniciante (1–4 partidas)', icon: '🌱', category: 'Especiais', check: (s) => { const t = s.wins + s.losses; return t >= 1 && t <= 4 } },
   { id: 'dedicado', name: 'Dedicado (75+ partidas)', icon: '💪', category: 'Especiais', check: (s) => s.wins + s.losses >= 75 },
   { id: 'veterano_200', name: 'Veterano (200+ partidas)', icon: '🦁', category: 'Especiais', check: (s) => s.wins + s.losses >= 200 },
+  /* Main / OTP */
+  { id: 'main', name: 'Main (50%+ em um campeão)', icon: '⭐', category: 'Campeões', check: (s) => { const t = s.wins + s.losses; if (t < 10) return false; const plays = [...(s.championPlays ?? [])].sort((a, b) => b.count - a.count); const best = plays[0]; return !!best && best.count / t >= 0.5 } },
+  { id: 'otp', name: 'OTP (70%+ em um campeão)', icon: '🎯', category: 'Campeões', check: (s) => { const t = s.wins + s.losses; if (t < 10) return false; const plays = [...(s.championPlays ?? [])].sort((a, b) => b.count - a.count); const best = plays[0]; return !!best && best.count / t >= 0.7 } },
+  /* Extra */
+  { id: 'winrate_75', name: 'Elite (75%+ win rate)', icon: '💜', category: 'Win rate', check: (s) => { const n = parseFloat(s.winRate); return !Number.isNaN(n) && n >= 75 && s.wins + s.losses >= 10 } },
+  { id: 'ratio_3', name: 'Ratio 3.0+', icon: '💎', category: 'KDA', check: (s): boolean => !!(s.kda && s.kda.deaths > 0 && (s.kda.kills + s.kda.assists) / s.kda.deaths >= 3) },
 ]
 
 export function getAchievementDef(id: string): AchievementDef | undefined {

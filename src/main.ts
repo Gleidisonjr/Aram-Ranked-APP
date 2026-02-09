@@ -105,11 +105,11 @@ function addMatch(winnerIds: string[], loserIds: string[], picks: ChampionPick[]
   return match
 }
 
-async function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[]) {
+async function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[], imageUrl?: string) {
   const idx = matches.findIndex((m) => m.id === matchId)
   if (idx < 0) return
   matches = [...matches]
-  matches[idx] = { ...matches[idx], picks, kda: kda.length ? kda : undefined }
+  matches[idx] = { ...matches[idx], picks, kda: kda.length ? kda : undefined, imageUrl: imageUrl?.trim() || undefined }
   saveMatches(matches)
   rerender()
   const result = await saveRankingToServer({ players, matches })
@@ -352,8 +352,11 @@ function createLayout(ranking: PlayerStats[]) {
     createHistorySection(),
     // createRiotMatchSection(), // Removido por enquanto. Reativar quando for usar "Adicionar partida" via Match ID.
     // createPrintImportSection(), // Desativado: partidas por print só via chat → eu adiciono no ranking.json
+    createComparePlayersSection(ranking, filteredMatches, highlightsData),
     createChampionStatsSection(ranking),
     createBestPlayerPerChampionSection(ranking, matches),
+    createCompareChampionsSection(ranking),
+    createGraphicsSection(ranking),
     createRecordsSection(filteredMatches, ranking),
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
@@ -762,15 +765,26 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
     const leaderBadgeHtml = pos === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
     const lastPos = ranking.length
     const lanternBadgeHtml = pos === lastPos ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
+    const mainBadgeHtml = (s.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp') ? ' <span class="player-badge-main" title="Main/OTP">Main</span>' : ''
     const highlightBadges = getHighlightBadgesForPlayer(highlightsData, s.player.id)
     const badgeSpan = (b: HighlightBadge) => `<span class="player-badge-highlight player-badge-highlight--${b.theme}" title="${escapeHtml(b.label)}">${escapeHtml(b.label)}</span>`
     const badgesHtml = highlightBadges.length > 0 ? highlightBadges.map(badgeSpan).join(' ') : ''
     const nameInnerClass = s.player.badge ? ' name-inner--boss' : ''
-    const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile" title="Ver perfil e conquistas">${escapeHtml(s.player.name)}</button>${bossBadgeHtml}${leaderBadgeHtml}${lanternBadgeHtml} ${badgesHtml}</span>`
-    const kdaStr = s.kda ? `${s.kda.kills} / ${s.kda.deaths} / ${s.kda.assists}` : '—'
-    const kdaRatioStr = s.kda && s.kda.deaths > 0
-      ? ((s.kda.kills + s.kda.assists) / s.kda.deaths).toFixed(1)
+    const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile" title="Ver perfil e conquistas">${escapeHtml(s.player.name)}</button>${bossBadgeHtml}${leaderBadgeHtml}${lanternBadgeHtml}${mainBadgeHtml} ${badgesHtml}</span>`
+    const kdaHtml = s.kda
+      ? `<span class="kda-k">${s.kda.kills}</span> / <span class="kda-d">${s.kda.deaths}</span> / <span class="kda-a">${s.kda.assists}</span>`
       : '—'
+    const ratio = s.kda && s.kda.deaths > 0 ? (s.kda.kills + s.kda.assists) / s.kda.deaths : 0
+    const kdaRatioStr = ratio > 0 ? ratio.toFixed(1) : '—'
+    const kdaRatioClass = ratio >= 3 ? 'kda-ratio--elite' : ratio >= 1 ? 'kda-ratio--pos' : ratio > 0 ? 'kda-ratio--neg' : ''
+    const winrateNum = parseFloat(s.winRate)
+    const winrateClass = !Number.isNaN(winrateNum)
+      ? winrateNum >= 75
+        ? 'winrate--elite'
+        : winrateNum >= 50
+          ? 'winrate--pos'
+          : 'winrate--neg'
+      : ''
     const champBadge = (c: { champion: string; count: number; wins: number }, titleExtra?: string) => {
       const url = getChampionIconUrl(c.champion)
       const title = titleExtra ?? `${escapeHtml(c.champion)} (${c.count}x)`
@@ -791,9 +805,9 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
       <td><div class="patente-cell"><span class="patente-badge${tierClass}" title="ELO: 1 vitória = sobe 1 divisão · 1 derrota = desce 1 (piso Ferro 4)">${escapeHtml(s.patente ?? '—')}</span></div></td>
       <td><div class="vd-cell"><span class="vd-wins">${s.wins}</span><span class="vd-sep"> — </span><span class="vd-losses">${s.losses}</span></div></td>
       <td><div class="last-results-cell">${lastDots || '—'}</div></td>
-      <td class="winrate">${s.winRate}%</td>
-      <td class="kda">${kdaStr}</td>
-      <td class="kda-ratio" title="(K+A)/D">${kdaRatioStr}</td>
+      <td class="winrate"><span class="winrate-val ${winrateClass}">${s.winRate}%</span></td>
+      <td class="kda">${kdaHtml}</td>
+      <td class="kda-ratio" title="(K+A)/D"><span class="kda-ratio-val ${kdaRatioClass}">${kdaRatioStr}</span></td>
       <td class="top-champ">${mostPlayedHtml}</td>
       <td class="top-champ">${bestHtml}</td>
     `
@@ -817,9 +831,9 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
       <div class="ranking-card-body">
         <div class="ranking-card-row"><span class="ranking-card-label">V/D</span><span class="vd-wins">${s.wins}</span><span class="vd-sep"> — </span><span class="vd-losses">${s.losses}</span></div>
         <div class="ranking-card-row"><span class="ranking-card-label">Últimos</span><span class="last-results-cell">${lastDots || '—'}</span></div>
-        <div class="ranking-card-row"><span class="ranking-card-label">Win%</span><span>${s.winRate}%</span></div>
-        <div class="ranking-card-row"><span class="ranking-card-label">KDA</span><span>${kdaStr}</span></div>
-        <div class="ranking-card-row"><span class="ranking-card-label">Ratio</span><span class="kda-ratio">${kdaRatioStr}</span></div>
+        <div class="ranking-card-row"><span class="ranking-card-label">Win%</span><span class="winrate-val ${winrateClass}">${s.winRate}%</span></div>
+        <div class="ranking-card-row"><span class="ranking-card-label">KDA</span><span class="kda-colored">${kdaHtml}</span></div>
+        <div class="ranking-card-row"><span class="ranking-card-label">Ratio</span><span class="kda-ratio-val ${kdaRatioClass}">${kdaRatioStr}</span></div>
         <div class="ranking-card-row"><span class="ranking-card-label">Mais jogado</span><span class="top-champ">${mostPlayedHtml}</span></div>
         <div class="ranking-card-row"><span class="ranking-card-label">Melhor</span><span class="top-champ">${bestHtml}</span></div>
       </div>
@@ -1012,6 +1026,14 @@ function createHistorySection() {
           <button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar campeão e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>
         </div>
         <div class="history-match-body">
+          ${m.imageUrl ? `
+          <div class="history-match-image-wrap">
+            <a href="${escapeHtml(m.imageUrl)}" target="_blank" rel="noopener noreferrer" class="history-match-image-link">
+              <img src="${escapeHtml(m.imageUrl)}" alt="Print da partida" class="history-match-image" loading="lazy" />
+            </a>
+            <p class="history-match-image-hint">Print da partida — clique para ampliar</p>
+          </div>
+          ` : ''}
           <div class="history-match-teams">
             <div class="history-team history-team-winner">
               <span class="history-team-label">Vencedores</span>
@@ -1276,6 +1298,305 @@ function createPrintImportSection() {
 }
 */
 
+/** Confronto direto: quando jogaram em times opostos ou juntos. */
+function computeHeadToHead(playerId1: string, playerId2: string, matchList: Match[]) {
+  let p1WinsOpposite = 0
+  let p2WinsOpposite = 0
+  let matchesTogether = 0
+  let winsTogether = 0
+  for (const m of matchList) {
+    const p1InWinner = m.winnerIds.includes(playerId1)
+    const p1InLoser = m.loserIds.includes(playerId1)
+    const p2InWinner = m.winnerIds.includes(playerId2)
+    const p2InLoser = m.loserIds.includes(playerId2)
+    const p1Played = p1InWinner || p1InLoser
+    const p2Played = p2InWinner || p2InLoser
+    if (!p1Played || !p2Played) continue
+    const opposite = (p1InWinner && p2InLoser) || (p1InLoser && p2InWinner)
+    const together = (p1InWinner && p2InWinner) || (p1InLoser && p2InLoser)
+    if (opposite) {
+      if (p1InWinner) p1WinsOpposite++
+      else p2WinsOpposite++
+    }
+    if (together) {
+      matchesTogether++
+      if (p1InWinner && p2InWinner) winsTogether++
+    }
+  }
+  return { p1WinsOpposite, p2WinsOpposite, matchesTogether, winsTogether }
+}
+
+function createComparePlayersSection(ranking: PlayerStats[], matchList: Match[], highlightsData: HighlightsData) {
+  const section = document.createElement('section')
+  section.className = 'card compare-section'
+  const cmpBgUrl = getChampionSplashUrl('Sett', 1) ?? ''
+  const cmpBgStyle = cmpBgUrl ? ` style="background-image: url(${escapeHtml(cmpBgUrl)})"` : ''
+  const totalPlayers = ranking.length
+  const optionsHtml = ranking.map((s) => `<option value="${escapeHtml(s.player.id)}">${escapeHtml(s.player.name)}</option>`).join('')
+
+  function playerTagsHtml(s: PlayerStats, pos: number) {
+    const parts: string[] = []
+    if (s.player.badge) parts.push('<span class="player-badge-boss">Boss</span>')
+    if (pos === 1) parts.push('<span class="player-badge-leader" title="Segui o líder!">Líder</span>')
+    if (pos === totalPlayers && totalPlayers > 0) parts.push('<span class="player-badge-lantern" title="Lanterna">Lanterna</span>')
+    if ((s.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp')) parts.push('<span class="player-badge-main" title="Main/OTP">Main</span>')
+    const badges = getHighlightBadgesForPlayer(highlightsData, s.player.id)
+    badges.forEach((b) => parts.push(`<span class="player-badge-highlight player-badge-highlight--${b.theme}" title="${escapeHtml(b.label)}">${escapeHtml(b.label)}</span>`))
+    return parts.length > 0 ? ' ' + parts.join(' ') : ''
+  }
+  function posDisplay(pos: number) {
+    if (pos === 1) return '<span class="rank-medal" aria-hidden="true">🥇</span>'
+    if (pos === 2) return '<span class="rank-medal" aria-hidden="true">🥈</span>'
+    if (pos === 3) return '<span class="rank-medal" aria-hidden="true">🥉</span>'
+    return String(pos)
+  }
+  function posClass(pos: number) {
+    return pos === 1 ? 'rank-num--gold' : pos === 2 ? 'rank-num--silver' : pos === 3 ? 'rank-num--bronze' : 'rank-num--white'
+  }
+  function vdHtml(wins: number, losses: number) {
+    return `<span class="compare-v">${wins}</span><span class="compare-sep"> — </span><span class="compare-d">${losses}</span>`
+  }
+  function winrateHtml(winRate: string) {
+    const num = parseFloat(winRate)
+    const cls = !Number.isNaN(num)
+      ? num >= 75
+        ? 'compare-winrate--elite'
+        : num >= 50
+          ? 'compare-winrate--pos'
+          : 'compare-winrate--neg'
+      : ''
+    return `<span class="compare-winrate ${cls}">${winRate}%</span>`
+  }
+  function ratioHtml(s: PlayerStats) {
+    const ratio = s.kda && s.kda.deaths > 0 ? (s.kda.kills + s.kda.assists) / s.kda.deaths : 0
+    const str = ratio > 0 ? ratio.toFixed(1) : '—'
+    const cls = ratio >= 3 ? 'compare-ratio--elite' : ratio >= 1 ? 'compare-ratio--pos' : ratio > 0 ? 'compare-ratio--neg' : ''
+    return `<span class="compare-ratio ${cls}">${str}</span>`
+  }
+  function kdaHtml(s: PlayerStats) {
+    if (!s.kda) return '—'
+    return `<span class="compare-k">${s.kda.kills}</span> / <span class="compare-d">${s.kda.deaths}</span> / <span class="compare-a">${s.kda.assists}</span>`
+  }
+
+  section.innerHTML = `
+    <div class="compare-section-bg"${cmpBgStyle} aria-hidden="true"></div>
+    <div class="compare-section-overlay"></div>
+    <div class="compare-section-inner">
+      <h2>Comparar jogadores</h2>
+      <p class="compare-hint">Compare estatísticas e confronto direto entre dois jogadores.</p>
+      <div class="compare-selects">
+        <select class="compare-select compare-select-1" aria-label="Jogador 1">
+          <option value="">— Selecionar —</option>${optionsHtml}
+        </select>
+        <span class="compare-vs">vs</span>
+        <select class="compare-select compare-select-2" aria-label="Jogador 2">
+          <option value="">— Selecionar —</option>${optionsHtml}
+        </select>
+      </div>
+      <div class="compare-result" aria-live="polite"></div>
+    </div>
+  `
+  const select1 = section.querySelector<HTMLSelectElement>('.compare-select-1')!
+  const select2 = section.querySelector<HTMLSelectElement>('.compare-select-2')!
+  const resultEl = section.querySelector('.compare-result')!
+
+  function renderComparison() {
+    const id1 = select1.value
+    const id2 = select2.value
+    if (!id1 || !id2 || id1 === id2) {
+      resultEl.innerHTML = id1 === id2 && id1 ? '<p class="empty-hint">Selecione jogadores diferentes.</p>' : ''
+      return
+    }
+    const s1 = ranking.find((r) => r.player.id === id1)!
+    const s2 = ranking.find((r) => r.player.id === id2)!
+    const h2h = computeHeadToHead(id1, id2, matchList)
+    const pos1 = ranking.findIndex((r) => r.player.id === id1) + 1
+    const pos2 = ranking.findIndex((r) => r.player.id === id2) + 1
+    const totalOpposite = h2h.p1WinsOpposite + h2h.p2WinsOpposite
+    const leadOpposite = totalOpposite > 0 ? (h2h.p1WinsOpposite > h2h.p2WinsOpposite ? s1 : h2h.p2WinsOpposite > h2h.p1WinsOpposite ? s2 : null) : null
+    const loserOpposite = totalOpposite > 0 && leadOpposite ? (leadOpposite.player.id === id1 ? s2 : s1) : null
+    const nameSpan = (name: string, isWinner: boolean, isLoser: boolean) => {
+      if (isWinner) return `<span class="compare-name compare-name--win">${escapeHtml(name)}</span>`
+      if (isLoser) return `<span class="compare-name compare-name--loss">${escapeHtml(name)}</span>`
+      return `<span class="compare-name">${escapeHtml(name)}</span>`
+    }
+    const oppositeText = totalOpposite > 0
+      ? `<p class="compare-h2h"><strong>Em times opostos:</strong> ${nameSpan(s1.player.name, leadOpposite?.player.id === id1, loserOpposite?.player.id === id1)} <span class="compare-score">${h2h.p1WinsOpposite}</span> × <span class="compare-score">${h2h.p2WinsOpposite}</span> ${nameSpan(s2.player.name, leadOpposite?.player.id === id2, loserOpposite?.player.id === id2)}</p>
+         ${leadOpposite && loserOpposite ? `<p class="compare-lead"><span class="compare-name compare-name--loss">${escapeHtml(loserOpposite.player.name)}</span> está perdendo para <span class="compare-name compare-name--win">${escapeHtml(leadOpposite.player.name)}</span>.</p>` : '<p class="compare-lead">Empate no confronto.</p>'}`
+      : '<p class="compare-h2h empty">Nunca jogaram em times opostos.</p>'
+    const togetherText = h2h.matchesTogether > 0
+      ? `<p class="compare-together"><strong>Juntos no mesmo time:</strong> <span class="compare-name compare-name--win">${h2h.winsTogether} vitórias</span> e <span class="compare-name compare-name--loss">${h2h.matchesTogether - h2h.winsTogether} derrotas</span> em ${h2h.matchesTogether} partidas.</p>`
+      : ''
+    const splash1 = getChampionSplashUrl('Jinx', 1) ?? ''
+    const splash2 = getChampionSplashUrl('Vi', 1) ?? ''
+    const splash3 = getChampionSplashUrl('Caitlyn', 1) ?? ''
+    const card1 = (s: PlayerStats, pos: number, splash: string) => {
+      const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)
+      return `<div class="compare-card compare-card--splash">
+        <div class="compare-card-bg" style="background-image: url(${escapeHtml(splash)})" aria-hidden="true"></div>
+        <div class="compare-card-overlay"></div>
+        <div class="compare-card-inner">
+          <h3>${nameHtml}${playerTagsHtml(s, pos)}</h3>
+          <div class="compare-stat"><span class="compare-label">Posição</span><span class="compare-pos ${posClass(pos)}">${posDisplay(pos)}</span></div>
+          <div class="compare-stat"><span class="compare-label">V/D</span><span>${vdHtml(s.wins, s.losses)}</span></div>
+          <div class="compare-stat"><span class="compare-label">Win%</span>${winrateHtml(s.winRate)}</div>
+          <div class="compare-stat"><span class="compare-label">KDA</span><span>${kdaHtml(s)}</span></div>
+          <div class="compare-stat"><span class="compare-label">Ratio</span>${ratioHtml(s)}</div>
+        </div>
+      </div>`
+    }
+    resultEl.innerHTML = `
+      <div class="compare-cards">
+        ${card1(s1, pos1, splash1)}
+        <div class="compare-card compare-card-head compare-card--splash">
+          <div class="compare-card-bg" style="background-image: url(${escapeHtml(splash2)})" aria-hidden="true"></div>
+          <div class="compare-card-overlay"></div>
+          <div class="compare-card-inner">
+            <h3>Confronto direto</h3>
+            ${oppositeText}
+            ${togetherText}
+          </div>
+        </div>
+        ${card1(s2, pos2, splash3)}
+      </div>
+    `
+  }
+
+  select1.addEventListener('change', renderComparison)
+  select2.addEventListener('change', renderComparison)
+  renderComparison()
+  return section
+}
+
+function createCompareChampionsSection(ranking: PlayerStats[]) {
+  const byChamp = new Map<string, { total: number; wins: number; bestPlayerId: string; bestPlayerName: string; bestWins: number }>()
+  for (const s of ranking) {
+    for (const c of s.championPlays) {
+      const key = c.champion.trim().toLowerCase()
+      if (!key) continue
+      const cur = byChamp.get(key)
+      if (!cur) {
+        byChamp.set(key, {
+          total: c.count,
+          wins: c.wins,
+          bestPlayerId: s.player.id,
+          bestPlayerName: s.player.name,
+          bestWins: c.wins,
+        })
+      } else {
+        cur.total += c.count
+        cur.wins += c.wins
+        if (c.wins > cur.bestWins || (c.wins === cur.bestWins && c.count > 0)) {
+          cur.bestPlayerId = s.player.id
+          cur.bestPlayerName = s.player.name
+          cur.bestWins = c.wins
+        }
+      }
+    }
+  }
+  const champList = [...byChamp.entries()]
+    .map(([key, v]) => {
+      const display = ranking.flatMap((s) => s.championPlays).find((p) => p.champion.trim().toLowerCase() === key)?.champion?.trim() ?? key
+      return { key, display, ...v }
+    })
+    .sort((a, b) => a.display.localeCompare(b.display))
+  const optionsHtml = champList.map((c) => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.display)}</option>`).join('')
+  const section = document.createElement('section')
+  section.className = 'card compare-champions-section no-print'
+  const cmpChampBg = getChampionSplashUrl('Zed', 2) ?? ''
+  const cmpChampBgStyle = cmpChampBg ? ` style="background-image: url(${escapeHtml(cmpChampBg)})"` : ''
+  section.innerHTML = `
+    <div class="compare-champions-bg"${cmpChampBgStyle} aria-hidden="true"></div>
+    <div class="compare-champions-overlay"></div>
+    <div class="compare-champions-inner">
+      <h2>Comparar campeões</h2>
+      <p class="compare-champions-hint">Compare estatísticas gerais de dois campeões.</p>
+      <div class="compare-champions-selects">
+        <select class="compare-champ-select compare-champ-select-1" aria-label="Campeão 1">
+          <option value="">— Selecionar —</option>${optionsHtml}
+        </select>
+        <span class="compare-champ-vs">vs</span>
+        <select class="compare-champ-select compare-champ-select-2" aria-label="Campeão 2">
+          <option value="">— Selecionar —</option>${optionsHtml}
+        </select>
+      </div>
+      <div class="compare-champions-result" aria-live="polite"></div>
+    </div>
+  `
+  const select1 = section.querySelector<HTMLSelectElement>('.compare-champ-select-1')!
+  const select2 = section.querySelector<HTMLSelectElement>('.compare-champ-select-2')!
+  const resultEl = section.querySelector('.compare-champions-result')!
+  function render() {
+    const k1 = select1.value
+    const k2 = select2.value
+    if (!k1 || !k2 || k1 === k2) {
+      resultEl.innerHTML = k1 === k2 && k1 ? '<p class="empty-hint">Selecione campeões diferentes.</p>' : ''
+      return
+    }
+    const c1 = champList.find((c) => c.key === k1)!
+    const c2 = champList.find((c) => c.key === k2)!
+    const winRate1 = c1.total > 0 ? ((c1.wins / c1.total) * 100).toFixed(1) : '0'
+    const winRate2 = c2.total > 0 ? ((c2.wins / c2.total) * 100).toFixed(1) : '0'
+    const icon1 = getChampionIconUrl(c1.display)
+    const icon2 = getChampionIconUrl(c2.display)
+    const iconHtml = (url: string | null) => url ? `<img class="compare-champ-icon" src="${escapeHtml(url)}" alt="" width="40" height="40" />` : ''
+    resultEl.innerHTML = `
+      <div class="compare-champions-cards">
+        <div class="compare-champ-card">
+          <div class="compare-champ-card-header">${iconHtml(icon1)}<span>${escapeHtml(c1.display)}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c1.total}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c1.wins}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate1) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate1}%</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Melhor jogador</span><span>${escapeHtml(c1.bestPlayerName)}</span></div>
+        </div>
+        <div class="compare-champ-card compare-champ-card-vs">
+          <span>vs</span>
+        </div>
+        <div class="compare-champ-card">
+          <div class="compare-champ-card-header">${iconHtml(icon2)}<span>${escapeHtml(c2.display)}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Partidas</span><span>${c2.total}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Vitórias</span><span>${c2.wins}</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Win rate</span><span class="winrate-val ${parseFloat(winRate2) >= 50 ? 'winrate--pos' : 'winrate--neg'}">${winRate2}%</span></div>
+          <div class="compare-champ-stat"><span class="compare-champ-label">Melhor jogador</span><span>${escapeHtml(c2.bestPlayerName)}</span></div>
+        </div>
+      </div>
+    `
+  }
+  select1.addEventListener('change', render)
+  select2.addEventListener('change', render)
+  render()
+  return section
+}
+
+function createGraphicsSection(ranking: PlayerStats[]) {
+  const section = document.createElement('section')
+  section.className = 'card graphics-section no-print'
+  const topByWins = [...ranking].sort((a, b) => b.wins - a.wins).slice(0, 10)
+  const maxWins = topByWins[0]?.wins ?? 1
+  const barsHtml = topByWins
+    .map((s, i) => {
+      const pct = maxWins > 0 ? (s.wins / maxWins) * 100 : 0
+      return `<div class="graphics-bar-row">
+        <span class="graphics-bar-label">${i + 1}. ${escapeHtml(s.player.name)}</span>
+        <div class="graphics-bar-track"><div class="graphics-bar-fill" style="width: ${pct}%"></div></div>
+        <span class="graphics-bar-value">${s.wins}V</span>
+      </div>`
+    })
+    .join('')
+  const gfxBg = getChampionSplashUrl('Lux', 2) ?? ''
+  const gfxBgStyle = gfxBg ? ` style="background-image: url(${escapeHtml(gfxBg)})"` : ''
+  section.innerHTML = `
+    <div class="graphics-section-bg"${gfxBgStyle} aria-hidden="true"></div>
+    <div class="graphics-section-overlay"></div>
+    <div class="graphics-section-inner">
+      <h2>Gráficos</h2>
+      <p class="graphics-hint">Top 10 vitórias</p>
+      <div class="graphics-bars">${barsHtml}</div>
+    </div>
+  `
+  return section
+}
+
 function createChampionStatsSection(ranking: PlayerStats[]) {
   const section = document.createElement('section')
   section.className = 'card champion-section'
@@ -1293,15 +1614,8 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
   ranking.forEach((s) => {
     if (s.championPlays.length === 0) return
     const card = document.createElement('div')
-    card.className = 'champion-card'
-    const sortedChamps = [...s.championPlays].sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count
-      if (b.wins !== a.wins) return b.wins - a.wins
-      const ratioA = typeof a.ratio === 'number' ? a.ratio : 0
-      const ratioB = typeof b.ratio === 'number' ? b.ratio : 0
-      if (ratioB !== ratioA) return ratioB - ratioA
-      return a.champion.localeCompare(b.champion)
-    })
+    card.className = 'champion-card champion-card--collapsed'
+    const sortedChamps = [...s.championPlays].sort((a, b) => a.champion.localeCompare(b.champion))
     const mostPicked = sortedChamps[0]
     const cardBgUrl = mostPicked ? getChampionSplashUrl(mostPicked.champion, 1) : null
     const cardBgStyle = cardBgUrl ? ` style="background-image: url(${escapeHtml(cardBgUrl)})"` : ''
@@ -1320,15 +1634,34 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
       })
       .join('')
     const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span> <span class="player-badge-boss">Boss</span>` : escapeHtml(s.player.name)
+    const champCount = sortedChamps.length
     card.innerHTML = `
       <div class="champion-card-bg"${cardBgStyle} aria-hidden="true"></div>
       <div class="champion-card-overlay"></div>
-      <h3>${nameHtml}</h3>
-      <div class="champ-list">
-        <div class="champ-row champ-row--header champ-row--white"><span class="champ-name">Campeão</span><span class="champ-count">Picks</span><span class="champ-winrate">Vitória</span><span class="champ-ratio">Ratio</span></div>
-        ${rows}
+      <div class="champion-card-header" role="button" tabindex="0" aria-expanded="false" aria-label="Expandir piques de ${escapeHtml(s.player.name)}">
+        <span class="champion-card-toggle" aria-hidden="true"></span>
+        <h3 class="champion-card-title">${nameHtml}</h3>
+        <span class="champion-card-count">${champCount} champion${champCount !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="champion-card-body">
+        <div class="champ-list">
+          <div class="champ-row champ-row--header champ-row--white"><span class="champ-name">Champion</span><span class="champ-count">Picks</span><span class="champ-winrate">Win</span><span class="champ-ratio">Ratio</span></div>
+          ${rows}
+        </div>
       </div>
     `
+    const header = card.querySelector('.champion-card-header')!
+    header.addEventListener('click', () => {
+      const collapsed = card.classList.toggle('champion-card--collapsed')
+      header.setAttribute('aria-expanded', String(!collapsed))
+    })
+    header.addEventListener('keydown', (e) => {
+      const ev = e as KeyboardEvent
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault()
+        ;(header as HTMLElement).click()
+      }
+    })
     grid.appendChild(card)
   })
   if (grid.children.length === 0) {
@@ -1456,10 +1789,12 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
     if (!best) continue
     const displayName = list[0] ? (ranking.find((s) => s.player.id === list[0].playerId)?.championPlays.find((p) => p.champion.trim().toLowerCase() === key)?.champion ?? key) : key
     const pos = ranking.findIndex((s) => s.player.id === best.playerId) + 1
-    const bossTag = ranking.find((s) => s.player.id === best.playerId)?.player.badge ? ' <span class="player-badge-boss">Boss</span>' : ''
+    const bestStats = ranking.find((s) => s.player.id === best.playerId)
+    const bossTag = bestStats?.player.badge ? ' <span class="player-badge-boss">Boss</span>' : ''
     const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
     const lanternTag = pos === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
-    const tagsHtml = bossTag + leaderTag + lanternTag
+    const mainTag = (bestStats?.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp') ? ' <span class="player-badge-main" title="Main/OTP">Main</span>' : ''
+    const tagsHtml = bossTag + leaderTag + lanternTag + mainTag
     const score100 = Math.round(Math.min(100, Math.max(0, best.score)))
     items.push({
       champion: displayName,
@@ -1480,6 +1815,13 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
     `
     return section
   }
+  const champOptions = [...new Map(items.map((i) => {
+    const key = i.champion.trim().toLowerCase()
+    return [key, { key, display: i.champion.trim() }]
+  })).values()].sort((a, b) => a.display.localeCompare(b.display))
+  const filterOptionsHtml = `<option value="">Todos os campeões</option>` + champOptions
+    .map((c) => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.display)}</option>`)
+    .join('')
   const cardsHtml = items
     .map(
       (item) => {
@@ -1492,7 +1834,7 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
           primaryUrl || fallbackUrl
             ? `<img class="best-champ-card-bg-img" src="${escapeHtml(primaryUrl)}" data-fallback="${escapeHtml(fallbackUrl)}" alt="" />`
             : ''
-        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}">
+        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score: ${item.score100}">
           <div class="best-champ-card-bg" aria-hidden="true">${imgHtml}</div>
           <div class="best-champ-card-overlay"></div>
           <div class="best-champ-card-inner">
@@ -1500,25 +1842,68 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
               ${iconHtml}
               <span class="best-champ-name">${escapeHtml(item.champion)}</span>
             </div>
-            <div class="best-champ-score-box">
-              <span class="best-champ-score-label">Score</span>
-              <span class="best-champ-score">${item.score100}</span>
-            </div>
             <div class="best-champ-player">${escapeHtml(item.playerName)}${item.tagsHtml}</div>
           </div>
         </div>`
       }
     )
     .join('')
+  const gridId = 'otp-champ-grid'
   section.innerHTML = `
     <div class="best-per-champ-section-bg"${otpBgStyle} aria-hidden="true"></div>
     <div class="best-per-champ-section-overlay"></div>
     <div class="best-per-champ-section-inner">
       <h2>OTP por campeão</h2>
-      <p class="best-champ-hint">Melhor jogador em cada campeão. Score 0–100 considera ELO, partidas, vitória, ratio, MVP e destaques por partida. Clique no card para ver o histórico do jogador com o campeão.</p>
-      <div class="best-champ-grid">${cardsHtml}</div>
+      <p class="best-champ-hint">Melhor jogador em cada campeão. Score 0–100 considera ELO, partidas, vitória, ratio, MVP e destaques. Clique no card para ver o histórico.</p>
+      <div class="best-champ-filter">
+        <label for="otp-champ-filter">Buscar campeão:</label>
+        <select id="otp-champ-filter" class="best-champ-select" aria-label="Filtrar por campeão">
+          ${filterOptionsHtml}
+        </select>
+      </div>
+      <div class="best-champ-grid" id="${gridId}">${cardsHtml}</div>
     </div>
   `
+  const filterSelect = section.querySelector<HTMLSelectElement>('#otp-champ-filter')!
+  const gridEl = section.querySelector(`#${gridId}`)!
+  filterSelect.addEventListener('change', () => {
+    const key = filterSelect.value
+    const filtered = key ? items.filter((i) => i.champion.trim().toLowerCase() === key) : items
+    const filteredCardsHtml = filtered
+      .map((item) => {
+        const iconUrl = getChampionIconUrl(item.champion)
+        const iconHtml = iconUrl ? `<img class="best-champ-icon" src="${escapeHtml(iconUrl)}" alt="" width="32" height="32" />` : ''
+        const urls = getChampionSplashUrls(item.champion, 2)
+        const primaryUrl = urls?.primary ?? ''
+        const fallbackUrl = urls?.fallback ?? primaryUrl
+        const imgHtml = primaryUrl || fallbackUrl ? `<img class="best-champ-card-bg-img" src="${escapeHtml(primaryUrl)}" data-fallback="${escapeHtml(fallbackUrl)}" alt="" />` : ''
+        return `<div class="best-champ-card" role="button" tabindex="0" data-champion="${escapeHtml(item.champion)}" data-player-id="${escapeHtml(item.playerId)}" data-player-name="${escapeHtml(item.playerName)}" title="Score: ${item.score100}">
+          <div class="best-champ-card-bg" aria-hidden="true">${imgHtml}</div>
+          <div class="best-champ-card-overlay"></div>
+          <div class="best-champ-card-inner">
+            <div class="best-champ-card-header">${iconHtml}<span class="best-champ-name">${escapeHtml(item.champion)}</span></div>
+            <div class="best-champ-player">${escapeHtml(item.playerName)}${item.tagsHtml}</div>
+          </div>
+        </div>`
+      })
+      .join('')
+    gridEl.innerHTML = filteredCardsHtml || '<p class="empty-hint">Nenhum campeão encontrado.</p>'
+    gridEl.querySelectorAll('.best-champ-card-bg-img').forEach((img) => {
+      const el = img as HTMLImageElement
+      el.onerror = function () {
+        const fb = el.dataset.fallback
+        if (fb) { el.onerror = null; el.src = fb }
+      }
+    })
+    gridEl.querySelectorAll('.best-champ-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const champion = (card as HTMLElement).dataset.champion ?? ''
+        const playerId = (card as HTMLElement).dataset.playerId ?? ''
+        const playerName = (card as HTMLElement).dataset.playerName ?? ''
+        showOtpDetailModal(champion, playerId, playerName, matchList, ranking)
+      })
+    })
+  })
   section.querySelectorAll('.best-champ-card-bg-img').forEach((img) => {
     const el = img as HTMLImageElement
     el.onerror = function () {
@@ -1587,6 +1972,8 @@ function createEditMatchModal(): HTMLElement {
     if (!formEl) return
     const picks: ChampionPick[] = []
     const kda: KdaEntry[] = []
+    const imageUrlInput = formEl.querySelector('.edit-match-image-url') as HTMLInputElement
+    const imageUrl = imageUrlInput?.value?.trim() ?? ''
     formEl.querySelectorAll('.edit-match-row').forEach((row) => {
       const champInput = row.querySelector('.edit-match-champ') as HTMLInputElement
       const playerId = champInput?.dataset?.playerId ?? ''
@@ -1600,7 +1987,7 @@ function createEditMatchModal(): HTMLElement {
         kda.push({ playerId, kills: k, deaths: d, assists: a })
       }
     })
-    await updateMatch(m.id, picks, kda)
+    await updateMatch(m.id, picks, kda, imageUrl)
     currentEditMatch = null
     root.classList.remove('open')
   })
@@ -1631,7 +2018,17 @@ function showEditMatchModal(m: Match) {
       <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">A</span><input type="number" class="edit-match-a rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${a}" min="0" /></label>
     </div>`
   }).join('')
-  formEl.innerHTML = rows
+  const imageUrlVal = m.imageUrl ?? ''
+  formEl.innerHTML = `
+    <div class="edit-match-row flex flex-wrap items-start gap-3 py-2 border-b border-slate-700/50">
+      <label class="flex flex-col gap-1 w-full max-w-md">
+        <span class="text-slate-500 text-sm">URL da imagem / print da partida (opcional)</span>
+        <input type="url" class="edit-match-image-url rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(imageUrlVal)}" placeholder="https://... ou data:image/..." />
+        <span class="text-slate-600 text-xs">Cole a URL ou data URL da imagem. Deixe vazio para remover.</span>
+      </label>
+    </div>
+    ${rows}
+  `
   root.classList.add('open')
 }
 

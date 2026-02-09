@@ -61,6 +61,8 @@ export interface Match {
   kda?: KdaEntry[]
   /** Estatísticas de dano, cura, ouro etc. por jogador (do print pós-partida) */
   matchExtendedStats?: MatchExtendedStat[]
+  /** URL ou data URL da imagem/print da partida (visível no histórico) */
+  imageUrl?: string
   createdAt: string
 }
 

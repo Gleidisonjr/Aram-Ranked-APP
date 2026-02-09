@@ -11,6 +11,7 @@ import {
   loadSeason,
   saveSeason,
   getAchievementDef,
+  getEloByStep,
   findPlayerByName,
   saveRankingToServer,
 } from './store'
@@ -356,7 +357,7 @@ function createLayout(ranking: PlayerStats[]) {
     createChampionStatsSection(ranking),
     createBestPlayerPerChampionSection(ranking, matches),
     createCompareChampionsSection(ranking),
-    createGraphicsSection(ranking),
+    createGraphicsSection(ranking, filteredMatches),
     createRecordsSection(filteredMatches, ranking),
     // createDamageStatsSection(matches, ranking), // Estatísticas individuais — comentado para implementar com mais dados depois
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
@@ -1568,32 +1569,124 @@ function createCompareChampionsSection(ranking: PlayerStats[]) {
   return section
 }
 
-function createGraphicsSection(ranking: PlayerStats[]) {
+/** ELO e winrate por partida (ordem cronológica) para um jogador. */
+function computePlayerEvolution(playerId: string, matches: Match[]) {
+  const matchesAsc = [...matches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  const eloSteps: number[] = []
+  const winrates: number[] = []
+  let step = 0
+  let wins = 0
+  let losses = 0
+  const maxStep = 38
+  for (const m of matchesAsc) {
+    const won = m.winnerIds.includes(playerId)
+    const played = won || m.loserIds.includes(playerId)
+    if (!played) continue
+    if (won) {
+      step = Math.min(step + 1, maxStep)
+      wins++
+    } else {
+      step = Math.max(step - 1, 0)
+      losses++
+    }
+    eloSteps.push(step)
+    const total = wins + losses
+    winrates.push(total > 0 ? (wins / total) * 100 : 0)
+  }
+  return { eloSteps, winrates }
+}
+
+function createGraphicsSection(ranking: PlayerStats[], matches: Match[]) {
   const section = document.createElement('section')
   section.className = 'card graphics-section no-print'
-  const topByWins = [...ranking].sort((a, b) => b.wins - a.wins).slice(0, 10)
-  const maxWins = topByWins[0]?.wins ?? 1
-  const barsHtml = topByWins
-    .map((s, i) => {
-      const pct = maxWins > 0 ? (s.wins / maxWins) * 100 : 0
-      return `<div class="graphics-bar-row">
-        <span class="graphics-bar-label">${i + 1}. ${escapeHtml(s.player.name)}</span>
-        <div class="graphics-bar-track"><div class="graphics-bar-fill" style="width: ${pct}%"></div></div>
-        <span class="graphics-bar-value">${s.wins}V</span>
-      </div>`
-    })
-    .join('')
   const gfxBg = getChampionSplashUrl('Lux', 2) ?? ''
   const gfxBgStyle = gfxBg ? ` style="background-image: url(${escapeHtml(gfxBg)})"` : ''
+  const optionsHtml = ranking.map((s) => `<option value="${escapeHtml(s.player.id)}">${escapeHtml(s.player.name)}</option>`).join('')
   section.innerHTML = `
     <div class="graphics-section-bg"${gfxBgStyle} aria-hidden="true"></div>
     <div class="graphics-section-overlay"></div>
     <div class="graphics-section-inner">
       <h2>Gráficos</h2>
-      <p class="graphics-hint">Top 10 vitórias</p>
-      <div class="graphics-bars">${barsHtml}</div>
+      <p class="graphics-hint">Evolução de ELO e win rate por jogador.</p>
+      <div class="graphics-player-select">
+        <label for="graphics-player-select">Jogador:</label>
+        <select id="graphics-player-select" class="graphics-select" aria-label="Selecionar jogador">
+          <option value="">— Selecionar —</option>${optionsHtml}
+        </select>
+      </div>
+      <div class="graphics-charts" aria-live="polite"></div>
     </div>
   `
+  const selectEl = section.querySelector<HTMLSelectElement>('#graphics-player-select')!
+  const chartsEl = section.querySelector('.graphics-charts')!
+
+  function renderCharts(playerId: string) {
+    if (!playerId) {
+      chartsEl.innerHTML = '<p class="empty-hint">Selecione um jogador para ver a evolução.</p>'
+      return
+    }
+    const s = ranking.find((r) => r.player.id === playerId)
+    if (!s) return
+    const { eloSteps, winrates } = computePlayerEvolution(playerId, matches)
+    if (eloSteps.length === 0) {
+      chartsEl.innerHTML = `<p class="empty-hint">${escapeHtml(s.player.name)} ainda não jogou partidas.</p>`
+      return
+    }
+    const rankEmblemUrl = getRankEmblemUrl(s.patenteTier)
+    const emblemHtml = rankEmblemUrl ? `<img class="graphics-player-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="40" height="40" />` : ''
+    const n = eloSteps.length
+    const w = 280
+    const h = 80
+    const padding = { top: 8, right: 8, bottom: 20, left: 8 }
+    const chartW = w - padding.left - padding.right
+    const chartH = h - padding.top - padding.bottom
+    const maxStep = 38
+    const pointsToPath = (vals: number[], maxVal: number) => {
+      if (vals.length === 0) return ''
+      const divisor = n <= 1 ? 1 : n - 1
+      return vals
+        .map((v, i) => {
+          const x = padding.left + (i / divisor) * chartW
+          const y = padding.top + chartH - (maxVal > 0 ? (v / maxVal) * chartH : 0)
+          return `${x},${y}`
+        })
+        .join(' ')
+    }
+    const eloPath = pointsToPath(eloSteps, maxStep)
+    const wrPath = pointsToPath(winrates, 100)
+    const lastElo = getEloByStep(eloSteps[eloSteps.length - 1] ?? 0)
+    const lastWr = winrates[winrates.length - 1] ?? 0
+    chartsEl.innerHTML = `
+      <div class="graphics-player-card">
+        <div class="graphics-player-header">
+          ${emblemHtml}
+          <div class="graphics-player-info">
+            <h3 class="graphics-player-name">${escapeHtml(s.player.name)}</h3>
+            <p class="graphics-player-stats">
+              <span class="graphics-stat">${escapeHtml(lastElo.label)}</span>
+              <span class="graphics-stat">${lastWr.toFixed(1)}% win rate</span>
+              <span class="graphics-stat">${s.wins}V ${s.losses}D</span>
+            </p>
+          </div>
+        </div>
+        <div class="graphics-chart-block">
+          <h4 class="graphics-chart-title">Evolução do ELO</h4>
+          <svg class="graphics-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+            <polyline class="graphics-line graphics-line-elo" fill="none" stroke="currentColor" stroke-width="1.5" points="${eloPath}" />
+          </svg>
+        </div>
+        <div class="graphics-chart-block">
+          <h4 class="graphics-chart-title">Evolução do win rate</h4>
+          <svg class="graphics-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+            <polyline class="graphics-line graphics-line-wr" fill="none" stroke="currentColor" stroke-width="1.5" points="${wrPath}" />
+          </svg>
+        </div>
+      </div>
+    `
+  }
+
+  selectEl.addEventListener('change', () => renderCharts(selectEl.value))
+  renderCharts(selectEl.value)
   return section
 }
 
@@ -1615,7 +1708,14 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
     if (s.championPlays.length === 0) return
     const card = document.createElement('div')
     card.className = 'champion-card champion-card--collapsed'
-    const sortedChamps = [...s.championPlays].sort((a, b) => a.champion.localeCompare(b.champion))
+    const sortedChamps = [...s.championPlays].sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      if (b.wins !== a.wins) return b.wins - a.wins
+      const ratioA = typeof a.ratio === 'number' ? a.ratio : 0
+      const ratioB = typeof b.ratio === 'number' ? b.ratio : 0
+      if (ratioB !== ratioA) return ratioB - ratioA
+      return a.champion.localeCompare(b.champion)
+    })
     const mostPicked = sortedChamps[0]
     const cardBgUrl = mostPicked ? getChampionSplashUrl(mostPicked.champion, 1) : null
     const cardBgStyle = cardBgUrl ? ` style="background-image: url(${escapeHtml(cardBgUrl)})"` : ''

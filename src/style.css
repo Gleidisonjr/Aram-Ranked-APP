@@ -605,7 +605,7 @@ body {
 .ranking-table .winrate { color: #fff; }
 .ranking-table .winrate-val.winrate--pos { color: var(--win); font-weight: 600; }
 .ranking-table .winrate-val.winrate--neg { color: var(--loss); font-weight: 600; }
-.ranking-table .winrate-val.winrate--elite { color: #c084fc; font-weight: 700; }
+.ranking-table .winrate-val.winrate--elite { color: #fbbf24; font-weight: 700; }
 .ranking-table .kda { font-size: 0.85rem; color: #fff; }
 .ranking-table .kda-k { color: var(--win); }
 .ranking-table .kda-d { color: var(--loss); }
@@ -617,7 +617,7 @@ body {
 }
 .ranking-table .kda-ratio-val.kda-ratio--pos { color: var(--win); }
 .ranking-table .kda-ratio-val.kda-ratio--neg { color: var(--loss); }
-.ranking-table .kda-ratio-val.kda-ratio--elite { color: #c084fc; font-weight: 700; }
+.ranking-table .kda-ratio-val.kda-ratio--elite { color: #fbbf24; font-weight: 700; }
 .ranking-table th:nth-child(4),
 .ranking-table th:nth-child(5),
 .ranking-table th:nth-child(6),
@@ -684,17 +684,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.2rem 0.4rem;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: rgba(232, 163, 23, 0.12);
-  border: 1px solid rgba(232, 163, 23, 0.35);
-  border-radius: 6px;
-  color: var(--accent);
+  color: var(--text);
 }
 .ranking-table .top-champ .champ-icon {
   width: 20px;
@@ -846,13 +842,13 @@ body {
 .ranking-card-row .vd-losses { color: var(--loss); font-weight: 600; }
 .ranking-card-row .winrate-val.winrate--pos { color: var(--win); font-weight: 600; }
 .ranking-card-row .winrate-val.winrate--neg { color: var(--loss); font-weight: 600; }
-.ranking-card-row .winrate-val.winrate--elite { color: #c084fc; font-weight: 700; }
+.ranking-card-row .winrate-val.winrate--elite { color: #fbbf24; font-weight: 700; }
 .ranking-card-row .kda-colored .kda-k { color: var(--win); }
 .ranking-card-row .kda-colored .kda-d { color: var(--loss); }
 .ranking-card-row .kda-colored .kda-a { color: #60a5fa; }
 .ranking-card-row .kda-ratio-val.kda-ratio--pos { color: var(--win); font-weight: 600; }
 .ranking-card-row .kda-ratio-val.kda-ratio--neg { color: var(--loss); font-weight: 600; }
-.ranking-card-row .kda-ratio-val.kda-ratio--elite { color: #c084fc; font-weight: 700; }
+.ranking-card-row .kda-ratio-val.kda-ratio--elite { color: #fbbf24; font-weight: 700; }
 .ranking-card-body .ranking-card-row > span:not(.vd-wins):not(.vd-sep):not(.vd-losses):not(.last-results-cell):not(.top-champ):not(.kda-colored) { color: #fff; }
 .ranking-card-row .last-results-cell {
   display: inline-flex;
@@ -863,12 +859,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.15rem 0.35rem;
-  font-size: 0.7rem;
-  background: rgba(232, 163, 23, 0.12);
-  border: 1px solid rgba(232, 163, 23, 0.35);
-  border-radius: 6px;
-  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
 }
 .ranking-card-row .champ-icon {
   width: 18px;
@@ -1483,42 +1476,89 @@ body {
   font-size: 0.9rem;
   margin-bottom: 1rem;
 }
-.graphics-bars {
+.graphics-player-select {
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
 }
-.graphics-bar-row {
-  display: grid;
-  grid-template-columns: 1fr 2fr minmax(3rem, auto);
+.graphics-player-select label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.graphics-select {
+  min-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.graphics-player-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+.graphics-player-header {
+  display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-bottom: 1.25rem;
 }
-.graphics-bar-label {
-  font-size: 0.85rem;
-  color: #fff;
+.graphics-player-emblem {
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.graphics-player-info {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.graphics-bar-track {
-  height: 1.25rem;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-  overflow: hidden;
+.graphics-player-name {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
 }
-.graphics-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), rgba(232, 163, 23, 0.7));
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-.graphics-bar-value {
+.graphics-player-stats {
+  margin: 0;
   font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.graphics-stat {
+  color: var(--accent);
+}
+.graphics-chart-block {
+  margin-bottom: 1.25rem;
+}
+.graphics-chart-block:last-child {
+  margin-bottom: 0;
+}
+.graphics-chart-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.graphics-svg {
+  width: 100%;
+  height: 120px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.graphics-line {
+  vector-effect: non-scaling-stroke;
+}
+.graphics-line-elo {
+  color: var(--accent);
+}
+.graphics-line-wr {
   color: var(--win);
-  text-align: right;
 }
 
 /* OTP detail modal (histórico do jogador com o campeão) */
@@ -1939,10 +1979,10 @@ body {
 .compare-sep { color: rgba(255,255,255,0.6); }
 .compare-winrate--pos { color: var(--win) !important; font-weight: 600; }
 .compare-winrate--neg { color: var(--loss) !important; font-weight: 600; }
-.compare-winrate--elite { color: #c084fc !important; font-weight: 700; }
+.compare-winrate--elite { color: #fbbf24 !important; font-weight: 700; }
 .compare-ratio--pos { color: var(--win) !important; font-weight: 600; }
 .compare-ratio--neg { color: var(--loss) !important; font-weight: 600; }
-.compare-ratio--elite { color: #c084fc !important; font-weight: 700; }
+.compare-ratio--elite { color: #fbbf24 !important; font-weight: 700; }
 .compare-pos.rank-num--gold { color: #FFD700; }
 .compare-pos.rank-num--silver { color: #C0C0C0; }
 .compare-pos.rank-num--bronze { color: #CD7F32; }

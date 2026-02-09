@@ -1,5 +1,7 @@
 # Aram Ranked APP
 
+> Última atualização: fev 2026
+
 [![GitHub](https://img.shields.io/badge/GitHub-Gleidisonjr%2FAram--Ranked--APP-181717?logo=github)](https://github.com/Gleidisonjr/Aram-Ranked-APP)
 
 Aplicativo web para ranking de partidas **ARAM** (League of Legends) entre amigos. Acompanhe vitórias, derrotas, ELO, KDA, campeões mais jogados, sorteio de times e conquistas. Pronto para publicar no **GitHub Pages** e compartilhar o link no Discord ou no grupo.

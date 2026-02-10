@@ -3150,6 +3150,30 @@ body {
   align-items: center;
   gap: 0.75rem;
 }
+/* Borda colorida em volta do emblema de ELO (sem frame/wings externo) */
+.profile-elo-border-wrap {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 3px solid rgba(255,255,255,0.35);
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+.profile-elo-border-wrap[data-tier="ferro"] { border-color: #94a3b8; box-shadow: 0 0 12px rgba(148,163,184,0.45); }
+.profile-elo-border-wrap[data-tier="bronze"] { border-color: #cd7f32; box-shadow: 0 0 12px rgba(205,127,50,0.45); }
+.profile-elo-border-wrap[data-tier="prata"] { border-color: #c0c0c0; box-shadow: 0 0 12px rgba(192,192,192,0.5); }
+.profile-elo-border-wrap[data-tier="ouro"] { border-color: #ffd700; box-shadow: 0 0 12px rgba(255,215,0,0.45); }
+.profile-elo-border-wrap[data-tier="platina"] { border-color: #00d4aa; box-shadow: 0 0 12px rgba(0,212,170,0.45); }
+.profile-elo-border-wrap[data-tier="esmeralda"] { border-color: #10b981; box-shadow: 0 0 12px rgba(16,185,129,0.45); }
+.profile-elo-border-wrap[data-tier="diamante"] { border-color: #60a5fa; box-shadow: 0 0 12px rgba(96,165,250,0.45); }
+.profile-elo-border-wrap[data-tier="mestre"] { border-color: #a78bfa; box-shadow: 0 0 12px rgba(167,139,250,0.45); }
+.profile-elo-border-wrap[data-tier="grao-mestre"] { border-color: #f87171; box-shadow: 0 0 12px rgba(248,113,113,0.45); }
+.profile-elo-border-wrap[data-tier="challenger"] { border-color: #fbbf24; box-shadow: 0 0 12px rgba(251,191,36,0.5); }
+.profile-elo-border-wrap .profile-elo-emblem {
+  display: block;
+}
 .profile-elo-emblem {
   flex-shrink: 0;
   border-radius: 8px;

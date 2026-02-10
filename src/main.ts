@@ -129,6 +129,7 @@ export type HighlightBadge = { label: string; theme: 'positive' | 'negative' }
 export type HighlightsData = {
   mostKills: PlayerStats | null
   mostDeaths: PlayerStats | null
+  mostAssists: PlayerStats | null
   mostWins: PlayerStats | null
   mostLosses: PlayerStats | null
   bestKd: PlayerStats | null
@@ -188,6 +189,14 @@ function computeHighlightsData(ranking: PlayerStats[], filteredMatches: Match[])
     if (d === bestD && elo(s) < elo(best)) return s
     return best
   }, null)
+  const mostAssists = ranking.reduce<PlayerStats | null>((best, s) => {
+    const a = s.kda?.assists ?? 0
+    const bestA = best?.kda?.assists ?? 0
+    if (!best) return a > 0 ? s : null
+    if (a > bestA) return s
+    if (a === bestA && elo(s) > elo(best)) return s
+    return best
+  }, null)
   const mostWins = ranking.reduce<PlayerStats | null>((best, s) => {
     if (!best) return s.wins > 0 ? s : null
     if (s.wins > best.wins) return s
@@ -223,27 +232,29 @@ function computeHighlightsData(ranking: PlayerStats[], filteredMatches: Match[])
   const bestKdRatio = bestKd?.kda ? ((bestKd.kda.kills + bestKd.kda.assists) / Math.max(bestKd.kda.deaths, 1)).toFixed(1) : '—'
   const worstKdRatio = worstKd?.kda ? ((worstKd.kda.kills + worstKd.kda.assists) / Math.max(worstKd.kda.deaths, 1)).toFixed(1) : '—'
   return {
-    mostKills, mostDeaths, mostWins, mostLosses, bestKd, worstKd,
+    mostKills, mostDeaths, mostAssists, mostWins, mostLosses, bestKd, worstKd,
     bestKdRatio, worstKdRatio, mostWinsChamp, mostLosingChamp,
   }
 }
 
-/* Ordem dos badges: linha 1 (positivos) Mais vitórias, Melhor K/D, Mais abates; linha 2 (negativos) Mais derrotas, Pior K/D, Mais mortes */
+/* Ordem dos badges: linha 1 (positivos) Mais vitórias, Melhor K/D, Mais abates, Mais assistências; linha 2 (negativos) Mais derrotas, Pior K/D, Mais mortes */
 function getHighlightBadgesForPlayer(h: HighlightsData | null, playerId: string): HighlightBadge[] {
   if (!h) return []
   const badges: HighlightBadge[] = []
   if (h.mostWins?.player.id === playerId) badges.push({ label: 'Mais vitórias', theme: 'positive' })
   if (h.bestKd?.player.id === playerId) badges.push({ label: 'Melhor K/D', theme: 'positive' })
   if (h.mostKills?.player.id === playerId) badges.push({ label: 'Mais abates', theme: 'positive' })
+  if (h.mostAssists?.player.id === playerId) badges.push({ label: 'Mais assistências', theme: 'positive' })
   if (h.mostLosses?.player.id === playerId) badges.push({ label: 'Mais derrotas', theme: 'negative' })
   if (h.worstKd?.player.id === playerId) badges.push({ label: 'Pior K/D', theme: 'negative' })
   if (h.mostDeaths?.player.id === playerId) badges.push({ label: 'Mais mortes', theme: 'negative' })
   return badges
 }
 
-/** Destaques por partida: MVP, dano/cura/torres, maior sequência de abates, maior multiabate. */
+/** Destaques por partida: MVP, dano/cura/torres, maior sequência de abates, maior multiabate, mais assistências. */
 export type MatchHighlightIds = {
   mvpPlayerId: string | null
+  topAssistsPlayerId: string | null
   topDamageToChampionsPlayerId: string | null
   topDamageReceivedPlayerId: string | null
   topHealedPlayerId: string | null
@@ -259,6 +270,7 @@ function getMatchHighlightIds(m: Match): MatchHighlightIds {
   const stats = m.matchExtendedStats ?? []
   const result: MatchHighlightIds = {
     mvpPlayerId: null,
+    topAssistsPlayerId: null,
     topDamageToChampionsPlayerId: null,
     topDamageReceivedPlayerId: null,
     topHealedPlayerId: null,
@@ -314,6 +326,15 @@ function getMatchHighlightIds(m: Match): MatchHighlightIds {
       result.topMultikillPlayerId = s.playerId
     }
   })
+
+  // Mais assistências na partida (do KDA)
+  if (kdaList.length > 0) {
+    const maxAssists = Math.max(...kdaList.map((e) => e.assists))
+    if (maxAssists > 0) {
+      const top = kdaList.find((e) => e.assists === maxAssists)
+      if (top) result.topAssistsPlayerId = top.playerId
+    }
+  }
 
   // MVP = maior ratio KDA (sem usar dano/cura — não temos esses dados do print)
   let bestMvpScore = -1
@@ -413,8 +434,9 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
   const leaderTag = position === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
   const lanternTag = position === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
   const profileEmblemUrl = getRankEmblemUrl(s.patenteTier)
+  const tierAttr = s.patenteTier ? ` data-tier="${escapeHtml(s.patenteTier.toLowerCase())}"` : ''
   const profileEmblemHtml = profileEmblemUrl
-    ? `<img class="profile-elo-emblem" src="${escapeHtml(profileEmblemUrl)}" alt="" width="40" height="40" />`
+    ? `<div class="profile-elo-border-wrap"${tierAttr}><img class="profile-elo-emblem" src="${escapeHtml(profileEmblemUrl)}" alt="" width="40" height="40" /></div>`
     : ''
   const highlightBadges = getHighlightBadgesForPlayer(lastHighlightsData, s.player.id)
   const highlightBadgesHtml = highlightBadges.length > 0
@@ -675,16 +697,18 @@ function createHighlightsSection(ranking: PlayerStats[], h: HighlightsData) {
     'Mais vitórias': 'Lux',
     'Melhor K/D': 'Ivern',
     'Mais abates': 'Katarina',
+    'Mais assistências': 'Sona',
     'Mais derrotas': 'Thresh',
     'Pior K/D': 'Mordekaiser',
     'Mais mortes': 'Aatrox',
   }
   type HighlightItem = { label: string; name: string; valueStr: string; type: 'player' | 'champion'; theme: 'positive' | 'negative'; badgeLabel: string }
-  /* Linha 1: Mais vitórias, Melhor K/D, Mais abates, Campeão mais vencedor. Linha 2: Mais derrotas, Pior K/D, Mais mortes, Campeão mais perdedor. */
+  /* Linha 1: Mais vitórias, Melhor K/D, Mais abates, Mais assistências, Campeão mais vencedor. Linha 2: Mais derrotas, Pior K/D, Mais mortes, Campeão mais perdedor. */
   const items: HighlightItem[] = [
     { label: 'Mais vitórias', name: h.mostWins?.player.name ?? '—', valueStr: String(h.mostWins?.wins ?? '—'), type: 'player', theme: 'positive', badgeLabel: 'Mais vitórias' },
     { label: 'Melhor K/D', name: h.bestKd?.player.name ?? '—', valueStr: h.bestKdRatio, type: 'player', theme: 'positive', badgeLabel: 'Melhor K/D' },
     { label: 'Mais abates', name: h.mostKills?.player.name ?? '—', valueStr: String(h.mostKills?.kda?.kills ?? '—'), type: 'player', theme: 'positive', badgeLabel: 'Mais abates' },
+    { label: 'Mais assistências', name: h.mostAssists?.player.name ?? '—', valueStr: String(h.mostAssists?.kda?.assists ?? '—'), type: 'player', theme: 'positive', badgeLabel: 'Mais assistências' },
     { label: 'Campeão mais vencedor', name: h.mostWinsChamp?.name ?? '—', valueStr: h.mostWinsChamp ? `${h.mostWinsChamp.wins} vitórias` : '—', type: 'champion', theme: 'positive', badgeLabel: 'Campeão mais vencedor' },
     { label: 'Mais derrotas', name: h.mostLosses?.player.name ?? '—', valueStr: String(h.mostLosses?.losses ?? '—'), type: 'player', theme: 'negative', badgeLabel: 'Mais derrotas' },
     { label: 'Pior K/D', name: h.worstKd?.player.name ?? '—', valueStr: h.worstKdRatio, type: 'player', theme: 'negative', badgeLabel: 'Pior K/D' },
@@ -1012,6 +1036,7 @@ function createHistorySection() {
         if (playerId === matchHighlights.mvpPlayerId) badges.push({ label: 'MVP', theme: 'positive' })
         if (playerId === bestRatioPlayerId) badges.push({ label: 'Melhor KDA', theme: 'positive' })
         if (playerId === mostKillsPlayerId) badges.push({ label: 'Mais abates', theme: 'positive' })
+        if (playerId === matchHighlights.topAssistsPlayerId) badges.push({ label: 'Mais assistências', theme: 'positive' })
         if (playerId === matchHighlights.topHealedPlayerId) badges.push({ label: 'Mais curou', theme: 'positive' })
         if (playerId === matchHighlights.topSelfMitigatedPlayerId) badges.push({ label: 'Mais tankou', theme: 'positive' })
         if (playerId === worstRatioPlayerId) badges.push({ label: 'Pior KDA', theme: 'negative' })
@@ -2316,6 +2341,7 @@ function showOtpDetailModal(
       if (playerId === best?.playerId) badges.push('<span class="history-player-badge history-player-badge--positive">Melhor KDA</span>')
       if (playerId === worst?.playerId) badges.push('<span class="history-player-badge history-player-badge--negative">Pior KDA</span>')
     }
+    if (playerId === matchH.topAssistsPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais assistências</span>')
     if (playerId === matchH.topHealedPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais curou</span>')
     if (playerId === matchH.topSelfMitigatedPlayerId) badges.push('<span class="history-player-badge history-player-badge--positive">Mais tankou</span>')
     if (playerId === matchH.topDamageReceivedPlayerId) badges.push('<span class="history-player-badge history-player-badge--negative">Mais dano recebido</span>')
@@ -2526,7 +2552,7 @@ function createRecordsSection(matchList: Match[], ranking: PlayerStats[]) {
 /** Conta quantas vezes cada jogador teve cada destaque (MVP, melhor KDA, etc.). */
 function computeIndividualHighlightCounts(matchList: Match[], ranking: PlayerStats[]) {
   const counts: Record<string, Record<string, number>> = {}
-  const labels = ['MVP', 'Melhor KDA', 'Pior KDA', 'Mais dano', 'Mais dano rec.', 'Mais curou', 'Mais tankou', 'Mais dano torres', 'Maior sequência', 'Maior multiabate'] as const
+  const labels = ['MVP', 'Melhor KDA', 'Pior KDA', 'Mais assist.', 'Mais dano', 'Mais dano rec.', 'Mais curou', 'Mais tankou', 'Mais dano torres', 'Maior sequência', 'Maior multiabate'] as const
   ranking.forEach((s) => {
     counts[s.player.id] = {}
     labels.forEach((l) => { counts[s.player.id][l] = 0 })
@@ -2547,6 +2573,7 @@ function computeIndividualHighlightCounts(matchList: Match[], ranking: PlayerSta
     inc(h.mvpPlayerId, 'MVP')
     inc(bestPlayerId, 'Melhor KDA')
     inc(worstPlayerId, 'Pior KDA')
+    inc(h.topAssistsPlayerId, 'Mais assist.')
     inc(h.topDamageReceivedPlayerId, 'Mais dano rec.')
     inc(h.topHealedPlayerId, 'Mais curou')
     inc(h.topSelfMitigatedPlayerId, 'Mais tankou')

@@ -202,3 +202,4 @@ export function getRankEmblemUrl(patenteTier: string | undefined): string | null
   }
   return `${RANK_EMBLEM_BASE}/Emblem_${name}.png`
 }
+

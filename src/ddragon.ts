@@ -193,6 +193,23 @@ function getBaseUrl(): string {
 export function getRankEmblemUrl(patenteTier: string | undefined): string | null {
   if (!patenteTier) return null
   const tier = patenteTier.toLowerCase()
+  if (tier === 'boss') {
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bossGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0fdfa"/>
+      <stop offset="30%" stop-color="#ccfbf1"/>
+      <stop offset="60%" stop-color="#5eead4"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="18" fill="#0c4a6e" stroke="url(#bossGrad)" stroke-width="6"/>
+  <rect x="18" y="18" width="92" height="92" rx="14" fill="url(#bossGrad)" stroke="#0c4a6e" stroke-width="4"/>
+  <text x="64" y="70" font-size="28" font-family="Outfit, Arial, sans-serif" font-weight="800" text-anchor="middle" dominant-baseline="middle" fill="#0c4a6e">BOSS</text>
+</svg>`
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+  }
   const name = TIER_TO_EMBLEM[tier]
   if (!name) return null
   /* Esmeralda: usar imagem local que o usuário adicionou */

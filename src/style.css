@@ -655,6 +655,7 @@ body {
 .ranking-table .patente-emblem.patente-emblem--mestre { box-shadow: 0 0 0 2px #C4B5FD; }
 .ranking-table .patente-emblem.patente-emblem--grao-mestre { box-shadow: 0 0 0 2px #F87171; }
 .ranking-table .patente-emblem.patente-emblem--challenger { box-shadow: 0 0 0 2px #FBBF24, 0 0 8px rgba(251, 191, 36, 0.4); }
+.ranking-table .patente-emblem.patente-emblem--boss { box-shadow: 0 0 0 2px #2dd4bf, 0 0 10px rgba(45, 212, 191, 0.5); }
 .ranking-table .patente-emblem.patente-emblem--none { box-shadow: 0 0 0 1px var(--border); }
 .ranking-table .patente-badge {
   display: inline-block;
@@ -676,6 +677,14 @@ body {
 .ranking-table .patente-badge.patente-mestre { background: linear-gradient(145deg, #A78BFA 0%, #7C3AED 100%); color: #f5f3ff; border: 1px solid #C4B5FD; }
 .ranking-table .patente-badge.patente-grao-mestre { background: linear-gradient(145deg, #E74C3C 0%, #B91C1C 100%); color: #fef2f2; border: 1px solid #F87171; }
 .ranking-table .patente-badge.patente-challenger { background: linear-gradient(145deg, #F0C14B 0%, #E8A317 100%); color: #1f2937; border: 1px solid #FBBF24; box-shadow: 0 0 12px rgba(240, 193, 75, 0.4); }
+.ranking-table .patente-badge.patente-boss {
+  background: linear-gradient(120deg, #f0fdfa 0%, #ccfbf1 25%, #5eead4 60%, #2dd4bf 100%);
+  color: #0c4a6e;
+  border: 1px solid rgba(45, 212, 191, 0.7);
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.45);
+  min-width: 4.6rem;
+  text-align: center;
+}
 .ranking-table .patente-badge.patente-none { background: var(--border); color: var(--text-muted); border: 1px solid var(--border); }
 .ranking-table .patente-badge.patente-unranked { background: linear-gradient(145deg, #475569 0%, #334155 100%); color: #94a3b8; border: 1px solid #64748b; }
 
@@ -799,6 +808,14 @@ body {
 .ranking-card-elo .patente-badge.patente-mestre { background: linear-gradient(145deg, #A78BFA 0%, #7C3AED 100%); color: #f5f3ff; border: 1px solid #C4B5FD; }
 .ranking-card-elo .patente-badge.patente-grao-mestre { background: linear-gradient(145deg, #E74C3C 0%, #B91C1C 100%); color: #fef2f2; border: 1px solid #F87171; }
 .ranking-card-elo .patente-badge.patente-challenger { background: linear-gradient(145deg, #F0C14B 0%, #E8A317 100%); color: #1f2937; border: 1px solid #FBBF24; }
+.ranking-card-elo .patente-badge.patente-boss {
+  background: linear-gradient(120deg, #f0fdfa 0%, #ccfbf1 25%, #5eead4 60%, #2dd4bf 100%);
+  color: #0c4a6e;
+  border: 1px solid rgba(45, 212, 191, 0.7);
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.45);
+  min-width: 4.6rem;
+  text-align: center;
+}
 .ranking-card-elo .patente-badge.patente-none { background: var(--border); color: var(--text-muted); border: 1px solid var(--border); }
 .ranking-card-elo .patente-badge.patente-unranked { background: linear-gradient(145deg, #475569 0%, #334155 100%); color: #94a3b8; border: 1px solid #64748b; }
 .ranking-card-elo .patente-emblem {
@@ -816,6 +833,7 @@ body {
 .ranking-card-name-wrap .patente-emblem.patente-emblem--mestre { box-shadow: 0 0 0 2px #C4B5FD; }
 .ranking-card-name-wrap .patente-emblem.patente-emblem--grao-mestre { box-shadow: 0 0 0 2px #F87171; }
 .ranking-card-name-wrap .patente-emblem.patente-emblem--challenger { box-shadow: 0 0 0 2px #FBBF24, 0 0 6px rgba(251, 191, 36, 0.35); }
+.ranking-card-name-wrap .patente-emblem.patente-emblem--boss { box-shadow: 0 0 0 2px #2dd4bf, 0 0 8px rgba(45, 212, 191, 0.45); }
 .ranking-card-name-wrap .patente-emblem.patente-emblem--none { box-shadow: 0 0 0 1px var(--border); }
 .ranking-card-body {
   display: flex;
@@ -2545,6 +2563,14 @@ body {
 .sortear-section .sortear-elo.patente-badge.patente-mestre { background: linear-gradient(145deg, #A78BFA 0%, #7C3AED 100%); color: #f5f3ff; border-color: #C4B5FD; }
 .sortear-section .sortear-elo.patente-badge.patente-grao-mestre { background: linear-gradient(145deg, #E74C3C 0%, #B91C1C 100%); color: #fef2f2; border-color: #F87171; }
 .sortear-section .sortear-elo.patente-badge.patente-challenger { background: linear-gradient(145deg, #F0C14B 0%, #E8A317 100%); color: #1f2937; border-color: #FBBF24; box-shadow: 0 0 8px rgba(240, 193, 75, 0.35); }
+.sortear-section .sortear-elo.patente-badge.patente-boss {
+  background: linear-gradient(120deg, #f0fdfa 0%, #ccfbf1 25%, #5eead4 60%, #2dd4bf 100%);
+  color: #0c4a6e;
+  border-color: rgba(45, 212, 191, 0.7);
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.45);
+  min-width: 4.6rem;
+  text-align: center;
+}
 .sortear-section .sortear-elo.patente-badge.patente-none { background: var(--border); color: var(--text-muted); border-color: var(--border); }
 .sortear-section .sortear-elo.patente-badge.patente-unranked { background: linear-gradient(145deg, #475569 0%, #334155 100%); color: #94a3b8; border-color: #64748b; }
 
@@ -3171,6 +3197,7 @@ body {
 .profile-elo-border-wrap[data-tier="mestre"] { border-color: #a78bfa; box-shadow: 0 0 12px rgba(167,139,250,0.45); }
 .profile-elo-border-wrap[data-tier="grao-mestre"] { border-color: #f87171; box-shadow: 0 0 12px rgba(248,113,113,0.45); }
 .profile-elo-border-wrap[data-tier="challenger"] { border-color: #fbbf24; box-shadow: 0 0 12px rgba(251,191,36,0.5); }
+.profile-elo-border-wrap[data-tier="boss"] { border-color: #5eead4; box-shadow: 0 0 14px rgba(45, 212, 191, 0.55); }
 .profile-elo-border-wrap .profile-elo-emblem {
   display: block;
 }

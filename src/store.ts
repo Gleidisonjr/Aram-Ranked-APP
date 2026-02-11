@@ -24,6 +24,11 @@ export interface RankingData {
   matches: Match[]
 }
 
+// Override temporário de ELO para testes visuais.
+const TEST_ELO_OVERRIDES = new Map<string, { label: string; tier: string }>([
+  ['p-2-22cm50kmes190cm', { label: 'Boss', tier: 'boss' }],
+])
+
 /** URL da API para salvar o ranking permanentemente (Vercel). */
 const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.replace(/\/+$/, '')
   ?? 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
@@ -560,7 +565,12 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
       return kdaB - kdaA
     })
     .map((s) => {
-      const { label, tier } = s.eloStep >= 0 ? getEloByStep(s.eloStep) : { label: 'Unranked', tier: 'unranked' as const }
+      const override = TEST_ELO_OVERRIDES.get(s.player.id)
+      const { label, tier } = override
+        ? override
+        : s.eloStep >= 0
+          ? getEloByStep(s.eloStep)
+          : { label: 'Unranked', tier: 'unranked' as const }
       const achievements = ACHIEVEMENTS.filter((a) => a.check(s)).map((a) => ({ id: a.id, name: a.name }))
       return {
         ...s,

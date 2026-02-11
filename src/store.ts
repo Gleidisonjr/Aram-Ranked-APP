@@ -49,7 +49,7 @@ export async function saveRankingToServer(data: RankingData): Promise<{ ok: bool
 export async function loadFromFile(): Promise<RankingData | null> {
   try {
     const url = `${RANKING_JSON_URL}?t=${Date.now()}`
-    const res = await fetch(url)
+    const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) {
       console.warn(`ranking.json: HTTP ${res.status} em ${url}`)
       return null

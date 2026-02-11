@@ -516,9 +516,26 @@ function createToolbar() {
     <div class="toolbar-overlay"></div>
     <div class="toolbar-inner">
       <span class="season-label">Temporada: <strong>${escapeHtml(loadSeason())}</strong></span>
+      <button type="button" class="btn btn-secondary btn-sm btn-refresh" title="Buscar atualizações do servidor (novas partidas)">Atualizar</button>
       ${adminToolsHtml}
     </div>
   `
+  bar.querySelector('.btn-refresh')?.addEventListener('click', async () => {
+    const btn = bar.querySelector('.btn-refresh')
+    if (btn instanceof HTMLButtonElement) {
+      btn.disabled = true
+      btn.textContent = 'Atualizando…'
+      const file = await loadFromFile()
+      const merged = mergeRankingData(file, loadPlayers(), loadMatches())
+      players = merged.players
+      matches = merged.matches
+      savePlayers(players)
+      saveMatches(matches)
+      rerender()
+      btn.disabled = false
+      btn.textContent = 'Atualizar'
+    }
+  })
   bar.querySelector('.btn-restore')?.addEventListener('click', () => restoreFromFile())
   bar.querySelector('.btn-save-server')?.addEventListener('click', async () => {
     const btn = bar.querySelector('.btn-save-server')
@@ -992,6 +1009,7 @@ function createHistorySection() {
             minute: '2-digit',
             second: '2-digit',
             hour12: false,
+            timeZone: 'America/Sao_Paulo',
           })
         : '—'
       const kdaList = m.kda ?? []
@@ -2329,7 +2347,7 @@ function showOtpDetailModal(
     const kdaStr = kda ? `${kda.kills}/${kda.deaths}/${kda.assists}` : '—'
     const ratioStr = kda && kda.deaths > 0 ? ((kda.kills + kda.assists) / kda.deaths).toFixed(1) : '—'
     const dateStr = m.createdAt
-      ? new Date(m.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+      ? new Date(m.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Sao_Paulo' })
       : '—'
     const matchH = getMatchHighlightIds(m)
     const badges: string[] = []

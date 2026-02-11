@@ -163,12 +163,7 @@ export function mergeRankingData(
     if (!idsFromFile.has(p.id) && !REMOVED_PLAYER_NAMES.has(p.name.trim())) players.push(p)
   })
 
-  const matchContentKey = (m: Match) => {
-    const w = [...m.winnerIds].sort().join(',')
-    const l = [...m.loserIds].sort().join(',')
-    return `${w}|${l}`
-  }
-  const byContentKey = new Map<string, Match>()
+  const byId = new Map<string, Match>()
   const localById = new Map(localMatches.map((m) => [m.id, m]))
   // Usa partidas do arquivo; se houver edição no localStorage (mesmo id com picks/kda), mescla.
   const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches
@@ -181,19 +176,27 @@ export function mergeRankingData(
     // Prefer the source with more complete data (covers more players)
     const useLocalPicks = localPicks.length > filePicks.length || (localPicks.length > 0 && filePicks.length === 0)
     const useLocalKda = localKda.length > fileKda.length || (localKda.length > 0 && fileKda.length === 0)
-    const merged: Match = local && (useLocalPicks || useLocalKda)
-      ? { ...m, picks: useLocalPicks ? localPicks : filePicks, kda: useLocalKda ? localKda : fileKda }
+    const fileStats = m.matchExtendedStats ?? []
+    const localStats = local?.matchExtendedStats ?? []
+    const useLocalStats = localStats.length > fileStats.length
+    const merged: Match = local && (useLocalPicks || useLocalKda || useLocalStats)
+      ? {
+          ...m,
+          picks: useLocalPicks ? localPicks : filePicks,
+          kda: useLocalKda ? localKda : fileKda,
+          matchExtendedStats: useLocalStats ? localStats : fileStats,
+          imageUrl: local?.imageUrl ?? m.imageUrl,
+        }
       : m
-    const key = matchContentKey(merged)
-    const existing = byContentKey.get(key)
-    if (!existing) {
-      byContentKey.set(key, merged)
-      return
-    }
-    const hasStats = (x: Match) => (x.matchExtendedStats?.length ?? 0) > 0
-    if (hasStats(merged) && !hasStats(existing)) byContentKey.set(key, merged)
+    byId.set(merged.id, merged)
   })
-  const rawMatches: Match[] = [...byContentKey.values()]
+  // Inclui partidas locais que não existem no arquivo (ids diferentes).
+  if (fileMatches.length > 0) {
+    localMatches.forEach((m) => {
+      if (!byId.has(m.id)) byId.set(m.id, m)
+    })
+  }
+  const rawMatches: Match[] = [...byId.values()]
   rawMatches.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
 
   const winsById = new Map<string, number>()

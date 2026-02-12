@@ -412,7 +412,7 @@ body {
 }
 .ranking-table {
   width: 100%;
-  min-width: 880px;
+  min-width: 1020px;
   border-collapse: collapse;
   font-size: 0.9rem;
   border-radius: var(--radius);
@@ -431,21 +431,20 @@ body {
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.ranking-table th:first-child { width: 2.25rem; }
-.ranking-table th:nth-child(2) { width: 22%; }  /* Jogador */
-.ranking-table th:nth-child(3) { width: 9%; }   /* ELO */
-.ranking-table th:nth-child(4) { width: 5%; }   /* V/D */
-.ranking-table th:nth-child(5) { width: 8%; }   /* Últimos */
-.ranking-table th:nth-child(6) { width: 6%; color: #fff; }   /* Win% */
-.ranking-table th:nth-child(7) { width: 11%; color: #fff; }  /* KDA */
-.ranking-table th:nth-child(8) { width: 5%; color: #fff; }   /* Ratio */
-.ranking-table th:nth-child(9), .ranking-table th:nth-child(10) { width: 12%; } /* Mais jogado, Melhor */
+.ranking-table th:first-child { width: 2.5rem; min-width: 2.5rem; }
+.ranking-table th:nth-child(2) { width: 24%; min-width: 9rem; }   /* Jogador */
+.ranking-table th:nth-child(3) { width: 11%; min-width: 5.5rem; } /* ELO */
+.ranking-table th:nth-child(4) { width: 5%; min-width: 3.5rem; }  /* V/D */
+.ranking-table th:nth-child(5) { width: 7%; min-width: 4rem; }    /* Últimos */
+.ranking-table th:nth-child(6) { width: 6%; min-width: 3.5rem; color: #fff; }   /* Win% */
+.ranking-table th:nth-child(7) { width: 10%; min-width: 4.5rem; color: #fff; }  /* KDA */
+.ranking-table th:nth-child(8) { width: 5%; min-width: 3rem; color: #fff; }     /* Ratio */
+.ranking-table th:nth-child(9), .ranking-table th:nth-child(10) { width: 14%; min-width: 6rem; } /* Mais jogado, Melhor */
 .ranking-table td {
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   overflow: hidden;
-  text-overflow: ellipsis;
   transition: background 0.15s ease;
 }
 .ranking-table tbody tr:last-child td { border-bottom: none; }
@@ -487,10 +486,10 @@ body {
 }
 .ranking-table .name .name-btn-profile {
   display: inline-block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
 }
 /* Tag Boss: gradiente branco/cyan bem destacado (diferente do Líder dourado) */
 .player-badge-boss {
@@ -665,6 +664,8 @@ body {
   border-radius: 6px;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  min-width: 5.5rem;
+  text-align: center;
 }
 /* Cores dos elos no estilo League of Legends (paleta oficial) */
 .ranking-table .patente-badge.patente-ferro { background: linear-gradient(145deg, #5D5D5D 0%, #3D3D3D 100%); color: #C0C0C0; border: 1px solid #6D6D6D; }
@@ -696,9 +697,8 @@ body {
   font-size: 0.8rem;
   font-weight: 500;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
   color: var(--text);
 }
 .ranking-table .top-champ .champ-icon {

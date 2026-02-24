@@ -512,6 +512,21 @@ body {
   50% { background-position: 100% 50%; }
 }
 
+/* Tag Troll: tom laranja/vermelho */
+.player-badge-troll {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  border-radius: 6px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  color: #7f1d1d;
+  background: linear-gradient(120deg, #fef2f2 0%, #fecaca 40%, #f87171 100%);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
 /* Nome do jogador Boss: mesmo gradiente da tag (ranking, cards, perfil, sortear) */
 .name-inner--boss .name-btn-profile,
 .player-name-boss {
@@ -3302,6 +3317,7 @@ body {
   color: var(--accent);
 }
 .profile-header .player-badge-boss,
+.profile-header .player-badge-troll,
 .profile-boss-tag {
   display: inline-block;
   margin-left: 0.25rem;

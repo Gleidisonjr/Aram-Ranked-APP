@@ -1,5 +1,5 @@
 import './style.css'
-import type { Match, ChampionPick, PlayerStats, KdaEntry } from './types'
+import type { Match, ChampionPick, PlayerStats, KdaEntry, Player } from './types'
 import {
   loadPlayers,
   savePlayers,
@@ -31,6 +31,13 @@ function playSound(name: string): void {
   } catch {
     // ignore
   }
+}
+
+/** Retorna o HTML da tag de badge do jogador (Boss, Troll, etc.). */
+function getPlayerBadgeHtml(player: Pick<Player, 'badge'>): string {
+  if (player.badge === 'creator') return ' <span class="player-badge-boss">Boss</span>'
+  if (player.badge === 'troll') return ' <span class="player-badge-troll">Troll</span>'
+  return ''
 }
 
 let players = loadPlayers()
@@ -433,7 +440,7 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
       </div>
     `).join('')
   const totalKda = s.kda ? `${s.kda.kills} / ${s.kda.deaths} / ${s.kda.assists}` : '—'
-  const bossTag = s.player.badge ? ' <span class="profile-boss-tag player-badge-boss">Boss</span>' : ''
+  const badgeTag = getPlayerBadgeHtml(s.player)
   const leaderTag = position === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
   const lanternTag = position === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
   const profileEmblemUrl = getRankEmblemUrl(s.patenteTier)
@@ -450,7 +457,7 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
         </div>
       </div>`
     : ''
-  const profileTagsHtml = [bossTag, leaderTag, lanternTag].filter(Boolean).join('') || ''
+  const profileTagsHtml = [badgeTag, leaderTag, lanternTag].filter(Boolean).join('') || ''
   const mostPlayed = s.championPlays[0]
   const bestChamp = s.championPlays.filter((c) => c.count >= 1).reduce<typeof s.championPlays[0] | null>(
     (best, c) => {
@@ -478,7 +485,7 @@ function showProfileModal(s: PlayerStats, ranking: PlayerStats[]) {
     <div class="profile-header">
       ${profileEmblemHtml}
       <div class="profile-header-text">
-        <h3>${s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)}${profileTagsHtml}</h3>
+        <h3>${s.player.badge === 'creator' ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)}${profileTagsHtml}</h3>
         <span class="profile-elo">${escapeHtml(s.patente ?? '—')}</span>
       </div>
     </div>
@@ -589,7 +596,8 @@ function createSortearTimesSection() {
     players.forEach((p) => {
       const label = document.createElement('label')
       label.className = 'checkbox-label inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-700/40 px-3 py-2 text-sm text-slate-200 cursor-pointer hover:bg-slate-600/50 hover:border-slate-500 transition has-[:checked]:border-amber-500 has-[:checked]:bg-amber-500/15 has-[:checked]:ring-1 has-[:checked]:ring-amber-500/50'
-      const nameHtml = p.badge ? `<span class="player-name-boss">${escapeHtml(p.name)}</span> <span class="player-badge-boss">Boss</span>` : escapeHtml(p.name)
+      const badgeHtml = getPlayerBadgeHtml(p)
+      const nameHtml = p.badge === 'creator' ? `<span class="player-name-boss">${escapeHtml(p.name)}</span>${badgeHtml}` : `${escapeHtml(p.name)}${badgeHtml}`
       label.innerHTML = `<input type="checkbox" class="sortear-player rounded border-slate-500 text-amber-500 focus:ring-amber-500/50" value="${p.id}" /> <span>${nameHtml}</span>`
       checkboxesEl.appendChild(label)
     })
@@ -628,13 +636,14 @@ function createSortearTimesSection() {
     const statsById = new Map(ranking.map((s) => [s.player.id, s]))
     const leaderId = ranking.length > 0 ? ranking[0].player.id : ''
     const lanternId = ranking.length > 0 ? ranking[ranking.length - 1].player.id : ''
-    function playerWithTagsHtml(p: { id: string; name: string; badge?: string }) {
+    function playerWithTagsHtml(p: { id: string; name: string; badge?: 'creator' | 'dev' | 'troll' }) {
       const tags: string[] = []
-      if (p.badge) tags.push('<span class="player-badge-boss">Boss</span>')
+      const badgeHtml = getPlayerBadgeHtml(p)
+      if (badgeHtml) tags.push(badgeHtml.trim())
       if (p.id === leaderId) tags.push('<span class="player-badge-leader" title="Segui o líder!">Líder</span>')
       if (p.id === lanternId) tags.push('<span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>')
       const tagsHtml = tags.length > 0 ? ' ' + tags.join(' ') : ''
-      const nameHtml = p.badge ? `<span class="player-name-boss">${escapeHtml(p.name)}</span>` : escapeHtml(p.name)
+      const nameHtml = p.badge === 'creator' ? `<span class="player-name-boss">${escapeHtml(p.name)}</span>` : escapeHtml(p.name)
       return `${nameHtml}${tagsHtml}`
     }
     function eloBadgeHtml(playerId: string) {
@@ -817,7 +826,7 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
     const lastDots = (s.lastResults ?? [])
       .map((r) => `<span class="result-dot ${r === 'W' ? 'win' : 'loss'}" title="${r === 'W' ? 'Vitória' : 'Derrota'}">${r === 'W' ? 'V' : 'D'}</span>`)
       .join('')
-    const bossBadgeHtml = s.player.badge ? ' <span class="player-badge-boss">Boss</span>' : ''
+    const badgeHtml = getPlayerBadgeHtml(s.player)
     const leaderBadgeHtml = pos === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
     const lastPos = ranking.length
     const lanternBadgeHtml = pos === lastPos ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
@@ -825,8 +834,8 @@ function createRankingSection(ranking: PlayerStats[], highlightsData: Highlights
     const highlightBadges = getHighlightBadgesForPlayer(highlightsData, s.player.id)
     const badgeSpan = (b: HighlightBadge) => `<span class="player-badge-highlight player-badge-highlight--${b.theme}" title="${escapeHtml(b.label)}">${escapeHtml(b.label)}</span>`
     const badgesHtml = highlightBadges.length > 0 ? highlightBadges.map(badgeSpan).join(' ') : ''
-    const nameInnerClass = s.player.badge ? ' name-inner--boss' : ''
-    const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile" title="Ver perfil e conquistas">${escapeHtml(s.player.name)}</button>${bossBadgeHtml}${leaderBadgeHtml}${lanternBadgeHtml}${mainBadgeHtml} ${badgesHtml}</span>`
+    const nameInnerClass = s.player.badge === 'creator' ? ' name-inner--boss' : ''
+    const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile" title="Ver perfil e conquistas">${escapeHtml(s.player.name)}</button>${badgeHtml}${leaderBadgeHtml}${lanternBadgeHtml}${mainBadgeHtml} ${badgesHtml}</span>`
     const kdaHtml = s.kda
       ? `<span class="kda-k">${s.kda.kills}</span> / <span class="kda-d">${s.kda.deaths}</span> / <span class="kda-a">${s.kda.assists}</span>`
       : '—'
@@ -1596,7 +1605,8 @@ function createComparePlayersSection(ranking: PlayerStats[], matchList: Match[],
 
   function playerTagsHtml(s: PlayerStats, pos: number) {
     const parts: string[] = []
-    if (s.player.badge) parts.push('<span class="player-badge-boss">Boss</span>')
+    const badgeHtml = getPlayerBadgeHtml(s.player)
+    if (badgeHtml) parts.push(badgeHtml.trim())
     if (pos === 1) parts.push('<span class="player-badge-leader" title="Segui o líder!">Líder</span>')
     if (pos === totalPlayers && totalPlayers > 0) parts.push('<span class="player-badge-lantern" title="Lanterna">Lanterna</span>')
     if ((s.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp')) parts.push('<span class="player-badge-main" title="Main/OTP">Main</span>')
@@ -1691,7 +1701,7 @@ function createComparePlayersSection(ranking: PlayerStats[], matchList: Match[],
     const splash2 = getChampionSplashUrl('Vi', 1) ?? ''
     const splash3 = getChampionSplashUrl('Caitlyn', 1) ?? ''
     const card1 = (s: PlayerStats, pos: number, splash: string) => {
-      const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)
+      const nameHtml = s.player.badge === 'creator' ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>` : escapeHtml(s.player.name)
       const rankEmblemUrl = getRankEmblemUrl(s.patenteTier)
       const emblemHtml = rankEmblemUrl ? `<img class="compare-player-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="28" height="28" />` : ''
       return `<div class="compare-card compare-card--splash">
@@ -1794,7 +1804,8 @@ function createCompareChampionsSection(ranking: PlayerStats[], matchList: Match[
     const emblemUrl = getRankEmblemUrl(bestStats.patenteTier)
     const emblemHtml = emblemUrl ? `<img class="compare-champ-elo-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="24" height="24" />` : ''
     const tags: string[] = []
-    if (bestStats.player.badge) tags.push('<span class="player-badge-boss">Boss</span>')
+    const badgeHtml = getPlayerBadgeHtml(bestStats.player)
+    if (badgeHtml) tags.push(badgeHtml.trim())
     const pos = ranking.findIndex((r) => r.player.id === bestPlayerId) + 1
     if (pos === 1) tags.push('<span class="player-badge-leader" title="Líder">Líder</span>')
     if (pos === ranking.length && ranking.length > 0) tags.push('<span class="player-badge-lantern" title="Lanterna">Lanterna</span>')
@@ -2087,7 +2098,8 @@ function createChampionStatsSection(ranking: PlayerStats[]) {
         return `<div class="champ-row">${imgHtml}<span class="champ-name">${escapeHtml(c.champion)}</span><span class="champ-count">${c.count}x</span><span class="champ-vd">${vdHtml}</span><span class="champ-winrate ${winRateClass}" title="${escapeHtml(winRateStr)}">${winPct}%</span><span class="champ-ratio" title="(K+A)/D">${ratioStr}</span></div>`
       })
       .join('')
-    const nameHtml = s.player.badge ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span> <span class="player-badge-boss">Boss</span>` : escapeHtml(s.player.name)
+    const champBadgeHtml = getPlayerBadgeHtml(s.player)
+    const nameHtml = s.player.badge === 'creator' ? `<span class="player-name-boss">${escapeHtml(s.player.name)}</span>${champBadgeHtml}` : `${escapeHtml(s.player.name)}${champBadgeHtml}`
     const champCount = sortedChamps.length
     card.innerHTML = `
       <div class="champion-card-bg"${cardBgStyle} aria-hidden="true"></div>
@@ -2244,7 +2256,7 @@ function createBestPlayerPerChampionSection(ranking: PlayerStats[], matchList: M
     const displayName = list[0] ? (ranking.find((s) => s.player.id === list[0].playerId)?.championPlays.find((p) => p.champion.trim().toLowerCase() === key)?.champion ?? key) : key
     const pos = ranking.findIndex((s) => s.player.id === best.playerId) + 1
     const bestStats = ranking.find((s) => s.player.id === best.playerId)
-    const bossTag = bestStats?.player.badge ? ' <span class="player-badge-boss">Boss</span>' : ''
+    const bossTag = bestStats ? getPlayerBadgeHtml(bestStats.player) : ''
     const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
     const lanternTag = pos === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
     const mainTag = (bestStats?.achievements ?? []).some((a) => a.id === 'main' || a.id === 'otp') ? ' <span class="player-badge-main" title="Main/OTP">Main</span>' : ''

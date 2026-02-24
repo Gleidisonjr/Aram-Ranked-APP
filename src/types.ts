@@ -1,8 +1,8 @@
 export interface Player {
   id: string
   name: string
-  /** Tag exibida ao lado do nome (ex: criador do ranking) */
-  badge?: 'creator' | 'dev'
+  /** Tag exibida ao lado do nome (ex: criador do ranking, troll) */
+  badge?: 'creator' | 'dev' | 'troll'
 }
 
 export interface ChampionPick {

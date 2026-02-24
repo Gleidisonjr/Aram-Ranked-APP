@@ -1007,7 +1007,7 @@ function createHistorySection() {
     list.innerHTML = '<p class="empty-hint">Nenhuma partida ainda.</p>'
   } else {
     const total = matches.length
-    const toShow = matches.slice().reverse().slice(0, 20)
+    const toShow = matches.slice(0, 20)
     toShow.forEach((m, i) => {
       const winnerNames = m.winnerIds.map((id) => nameById.get(id) ?? id)
       const loserNames = m.loserIds.map((id) => nameById.get(id) ?? id)

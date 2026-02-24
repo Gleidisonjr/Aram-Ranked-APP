@@ -215,15 +215,22 @@ export function mergeRankingData(
 
   const byId = new Map<string, Match>()
   const localById = new Map(localMatches.map((m) => [m.id, m]))
-  // Usa partidas do arquivo; se houver edição no localStorage (mesmo id com picks/kda), mescla.
+  const fileMatchIds = new Set(fileMatches.map((m) => m.id))
+  // Partidas que vêm do ranking.json têm prioridade: sempre usamos picks/KDA/vencedores do arquivo,
+  // para não mostrar dados antigos do localStorage (ex.: campeões/jogadores errados).
   const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches
   matchesToUse.forEach((m) => {
+    const fromFile = fileMatchIds.has(m.id)
+    if (fromFile) {
+      // Arquivo é a fonte da verdade: não mesclar com localStorage.
+      byId.set(m.id, m)
+      return
+    }
     const local = localById.get(m.id)
     const filePicks = m.picks ?? []
     const fileKda = m.kda ?? []
     const localPicks = local?.picks ?? []
     const localKda = local?.kda ?? []
-    // Prefer the source with more complete data (covers more players)
     const useLocalPicks = localPicks.length > filePicks.length || (localPicks.length > 0 && filePicks.length === 0)
     const useLocalKda = localKda.length > fileKda.length || (localKda.length > 0 && fileKda.length === 0)
     const fileStats = m.matchExtendedStats ?? []
@@ -240,8 +247,9 @@ export function mergeRankingData(
       : m
     byId.set(merged.id, merged)
   })
-  // Inclui partidas locais que não existem no arquivo (ids diferentes).
-  if (fileMatches.length > 0) {
+  // Quando o arquivo tem partidas, usamos SOMENTE as do arquivo (ranking.json é a fonte da verdade).
+  // Não misturamos partidas antigas do localStorage para evitar Don Godoy/Morgana etc. no histórico.
+  if (fileMatches.length === 0) {
     localMatches.forEach((m) => {
       if (!byId.has(m.id)) byId.set(m.id, m)
     })

@@ -14,6 +14,8 @@ import {
   getEloByStep,
   findPlayerByName,
   saveRankingToServer,
+  extractMatchFromImage,
+  type ExtractedMatchData,
 } from './store'
 // import type { ImportPrintData } from './store' // usado na createPrintImportSection (comentada)
 import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls, getCanonicalChampionName } from './ddragon'
@@ -373,6 +375,7 @@ function createLayout(ranking: PlayerStats[]) {
     createHighlightsSection(ranking, highlightsData),
     createRecordsSection(filteredMatches, ranking),
     createHistorySection(),
+    createAddMatchSection(),
     createComparePlayersSection(ranking, filteredMatches, highlightsData),
     createCompareChampionsSection(ranking, filteredMatches),
     createBestPlayerPerChampionSection(ranking, matches),
@@ -1263,6 +1266,173 @@ function _createRiotMatchSection_removed() {
       statusEl.className = 'riot-match-status riot-match-status--error'
     } finally {
       fetchBtn.disabled = false
+    }
+  })
+
+  return section
+}
+
+/** Reduz o tamanho da imagem para caber no limite da API (base64). */
+function resizeImageToBase64(file: File, maxWidth: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      let { width, height } = img
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('Canvas not supported'))
+        return
+      }
+      ctx.drawImage(img, 0, 0, width, height)
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg', quality)
+        resolve(dataUrl)
+      } catch (e) {
+        reject(e)
+      }
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to load image'))
+    }
+    img.src = url
+  })
+}
+
+/** Seção: adicionar partida enviando o print — extração por IA e confirmação. */
+function createAddMatchSection() {
+  const section = document.createElement('section')
+  section.className = 'card add-match-section no-print'
+  section.innerHTML = `
+    <h2>Adicionar partida</h2>
+    <p class="add-match-hint">Envie o <strong>print da tela pós-jogo</strong> (VITÓRIA/DERROTA). A IA extrai jogadores, campeões e KDA e a partida é criada automaticamente.</p>
+    <div class="add-match-upload">
+      <input type="file" id="add-match-file" accept="image/*" class="add-match-file-input" />
+      <button type="button" class="btn btn-primary" id="add-match-select-btn">Selecionar print</button>
+    </div>
+    <p class="add-match-status" id="add-match-status" aria-live="polite"></p>
+    <div class="add-match-preview" id="add-match-preview" hidden>
+      <h3 class="add-match-preview-title">Confirme os dados extraídos</h3>
+      <div class="add-match-preview-teams" id="add-match-preview-teams"></div>
+      <button type="button" class="btn btn-primary" id="add-match-confirm-btn">Confirmar e adicionar partida</button>
+    </div>
+  `
+  const fileInput = section.querySelector<HTMLInputElement>('#add-match-file')!
+  const selectBtn = section.querySelector<HTMLButtonElement>('#add-match-select-btn')!
+  const statusEl = section.querySelector<HTMLParagraphElement>('#add-match-status')!
+  const previewEl = section.querySelector<HTMLDivElement>('#add-match-preview')!
+  const previewTeamsEl = section.querySelector<HTMLDivElement>('#add-match-preview-teams')!
+  const confirmBtn = section.querySelector<HTMLButtonElement>('#add-match-confirm-btn')!
+
+  let lastExtracted: ExtractedMatchData | null = null
+
+  function nameToPlayerId(name: string): string {
+    const trimmed = (name || '').trim()
+    if (!trimmed) return ''
+    let p = findPlayerByName(players, trimmed)
+    if (!p) {
+      addPlayer(trimmed)
+      players = loadPlayers()
+      p = findPlayerByName(players, trimmed)
+    }
+    return p?.id ?? ''
+  }
+
+  selectBtn.addEventListener('click', () => fileInput.click())
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    statusEl.textContent = 'Redimensionando imagem…'
+    statusEl.className = 'add-match-status'
+    previewEl.hidden = true
+    lastExtracted = null
+    try {
+      const dataUrl = await resizeImageToBase64(file, 1200, 0.85)
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+      statusEl.textContent = 'Analisando print com IA…'
+      const result = await extractMatchFromImage(base64)
+      if (!result.ok) {
+        statusEl.textContent = result.error
+        statusEl.className = 'add-match-status error'
+        return
+      }
+      lastExtracted = result.data
+      const d = result.data
+      previewTeamsEl.innerHTML = `
+        <div class="add-match-team add-match-team--win">
+          <strong>Vitória</strong>
+          <ul>${d.winningTeam.map((p) => `<li>${escapeHtml(p.summonerName)} — ${escapeHtml(p.championName)} — ${p.kills}/${p.deaths}/${p.assists}</li>`).join('')}</ul>
+        </div>
+        <div class="add-match-team add-match-team--loss">
+          <strong>Derrota</strong>
+          <ul>${d.losingTeam.map((p) => `<li>${escapeHtml(p.summonerName)} — ${escapeHtml(p.championName)} — ${p.kills}/${p.deaths}/${p.assists}</li>`).join('')}</ul>
+        </div>
+      `
+      previewEl.hidden = false
+      statusEl.textContent = 'Revise e confirme para adicionar a partida.'
+      statusEl.className = 'add-match-status success'
+    } catch (e) {
+      statusEl.textContent = `Erro: ${String(e)}`
+      statusEl.className = 'add-match-status error'
+    }
+    fileInput.value = ''
+  })
+
+  confirmBtn.addEventListener('click', () => {
+    if (!lastExtracted) return
+    const d = lastExtracted
+    const winnerIds = d.winningTeam.map((p) => nameToPlayerId(p.summonerName)).filter(Boolean)
+    const loserIds = d.losingTeam.map((p) => nameToPlayerId(p.summonerName)).filter(Boolean)
+    if (winnerIds.length === 0 || loserIds.length === 0) {
+      statusEl.textContent = 'Não foi possível identificar jogadores. Verifique os nomes no print.'
+      statusEl.className = 'add-match-status error'
+      return
+    }
+    const allPlayers = [...d.winningTeam, ...d.losingTeam]
+    const picks: ChampionPick[] = allPlayers
+      .map((p) => ({ playerId: nameToPlayerId(p.summonerName), champion: (p.championName || '—').trim() }))
+      .filter((x) => x.playerId)
+    const kda: KdaEntry[] = allPlayers.map((p) => ({
+      playerId: nameToPlayerId(p.summonerName),
+      kills: p.kills ?? 0,
+      deaths: p.deaths ?? 0,
+      assists: p.assists ?? 0,
+    })).filter((e) => e.playerId)
+    const match = addMatch(winnerIds, loserIds, picks, kda)
+    if (match) {
+      const extStats: Match['matchExtendedStats'] = []
+      allPlayers.forEach((p) => {
+        const pid = nameToPlayerId(p.summonerName)
+        if (pid && p.damageToChampions != null && p.damageToChampions > 0) {
+          extStats.push({ playerId: pid, damageToChampions: p.damageToChampions })
+        }
+      })
+      if (extStats.length > 0) {
+        const idx = matches.findIndex((m) => m.id === match.id)
+        if (idx >= 0) {
+          matches = [...matches]
+          matches[idx] = { ...matches[idx], matchExtendedStats: extStats }
+          saveMatches(matches)
+          rerender()
+        }
+      }
+      previewEl.hidden = true
+      lastExtracted = null
+      statusEl.textContent = `Partida adicionada. Clique em "Salvar no servidor" na barra superior para atualizar o ranking online.`
+      statusEl.className = 'add-match-status success'
+    } else {
+      statusEl.textContent = 'Erro ao salvar a partida.'
+      statusEl.className = 'add-match-status error'
     }
   })
 

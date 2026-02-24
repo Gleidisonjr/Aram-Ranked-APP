@@ -1277,7 +1277,7 @@ body {
 }
 .best-champ-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0.75rem;
 }
 .best-champ-card {
@@ -1319,7 +1319,8 @@ body {
 }
 .best-champ-card-header {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
@@ -1334,12 +1335,21 @@ body {
   font-weight: 600;
   color: #fff;
   text-transform: capitalize;
+  flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .best-champ-card-header .best-champ-score-box {
   margin-bottom: 0;
   margin-left: auto;
   flex-shrink: 0;
+  align-self: flex-start;
 }
 .best-champ-score-box {
   display: inline-flex;
@@ -1367,6 +1377,10 @@ body {
 .best-champ-player {
   font-size: 0.95rem;
   color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .best-champ-player .player-badge-boss,
 .best-champ-player .player-badge-leader,
@@ -3114,6 +3128,71 @@ body {
   color: var(--win);
 }
 .import-status.error {
+  color: var(--loss);
+}
+
+/* Adicionar partida (upload print + IA) */
+.add-match-section .add-match-hint {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+.add-match-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.add-match-file-input {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+.add-match-status {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+}
+.add-match-status.success {
+  color: var(--win);
+}
+.add-match-status.error {
+  color: var(--loss);
+}
+.add-match-preview {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.add-match-preview-title {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+}
+.add-match-preview-teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 560px) {
+  .add-match-preview-teams {
+    grid-template-columns: 1fr;
+  }
+}
+.add-match-team ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.add-match-team--win strong {
+  color: var(--win);
+}
+.add-match-team--loss strong {
   color: var(--loss);
 }
 

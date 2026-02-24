@@ -34,6 +34,51 @@ const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE
   ?? 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
 const SAVE_RANKING_API_URL = `${API_BASE}/api/save-ranking`
 
+/** Resposta da API de extração de partida a partir do print. */
+export interface ExtractedMatchData {
+  winningTeam: Array<{
+    summonerName: string
+    championName: string
+    kills: number
+    deaths: number
+    assists: number
+    damageToChampions?: number | null
+  }>
+  losingTeam: Array<{
+    summonerName: string
+    championName: string
+    kills: number
+    deaths: number
+    assists: number
+    damageToChampions?: number | null
+  }>
+  matchDuration?: string | null
+}
+
+const EXTRACT_MATCH_API_URL = `${API_BASE}/api/extract-match`
+
+/** Envia o print (base64) para a API e retorna os dados extraídos da partida. */
+export async function extractMatchFromImage(imageBase64: string): Promise<{ ok: true; data: ExtractedMatchData } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(EXTRACT_MATCH_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64 }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return { ok: false, error: (json as { error?: string }).error || `Erro ${res.status}` }
+    }
+    const data = json as ExtractedMatchData
+    if (!Array.isArray(data.winningTeam) || !Array.isArray(data.losingTeam)) {
+      return { ok: false, error: 'Resposta inválida da API' }
+    }
+    return { ok: true, data }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
 /** Salva players e matches no servidor (ranking.json no GitHub). Retorna true se sucesso. */
 export async function saveRankingToServer(data: RankingData): Promise<{ ok: boolean; error?: string }> {
   try {

@@ -1,5 +1,11 @@
 # GitHub Pages – deploy e URL
 
+## Dados no site (GitHub Pages)
+
+O site público usa o arquivo **`public/ranking.json`** do repositório. Para o que você vê na sua máquina aparecer no site: atualize esse arquivo no projeto, faça **commit** e **push**. O deploy do GitHub Pages usa o que está no repo.
+
+---
+
 ## URL correta do site
 
 O app é publicado em:

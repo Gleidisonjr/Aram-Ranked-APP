@@ -16,7 +16,6 @@ import {
   computeRanking,
   loadFromFile,
   mergeRankingData,
-  saveRankingToServer,
   loadSeason,
   getEloByStep,
   computePlayerEvolution,
@@ -85,23 +84,6 @@ function getTodayInBrazil(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: BR_TIMEZONE })
 }
 
-async function persistRankingToServer(): Promise<void> {
-  const result = await saveRankingToServer({ players, matches })
-  if (!result.ok) {
-    const el = document.getElementById('save-error-toast') || (() => {
-      const div = document.createElement('div')
-      div.id = 'save-error-toast'
-      div.className = 'save-error-toast'
-      div.setAttribute('role', 'alert')
-      document.body.appendChild(div)
-      return div
-    })()
-    el.textContent = `Falha ao salvar no servidor: ${result.error ?? 'erro desconhecido'}. Seus dados estão salvos localmente.`
-    el.classList.add('show')
-    setTimeout(() => el.classList.remove('show'), 6000)
-  }
-}
-
 function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtDate?: string, options?: { skipRerender?: boolean }): void {
   const createdAt = createdAtDate?.trim()
     ? (() => {
@@ -119,7 +101,6 @@ function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtD
   matches = [match, ...matches]
   saveMatches(matches)
   savePlayers(players)
-  persistRankingToServer()
   if (!options?.skipRerender) rerender()
 }
 
@@ -129,7 +110,6 @@ function deleteMatch(matchId: string): void {
   saveMatches(matches)
   const deletedIds = [...new Set([...loadDeletedMatchIds(), matchId])]
   saveDeletedMatchIds(deletedIds)
-  persistRankingToServer()
   rerender()
 }
 
@@ -139,7 +119,6 @@ function invertMatch(matchId: string): void {
   if (!confirm('Inverter resultado? O time vencedor passará a perdedor e o perdedor a vencedor.')) return
   ;[match.winnerIds, match.loserIds] = [match.loserIds, match.winnerIds]
   saveMatches(matches)
-  persistRankingToServer()
   rerender()
 }
 

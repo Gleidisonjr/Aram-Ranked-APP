@@ -1,70 +1,21 @@
+/**
+ * Tipos para Aranked Cabaré — versão simplificada (sem KDA, sem campeões).
+ * Projeto completo (Cabaré v1) está em types-cabare-v1.ts.
+ */
+
 export interface Player {
   id: string
   name: string
-  /** Tag exibida ao lado do nome (ex: criador do ranking, troll) */
   badge?: 'creator' | 'dev' | 'troll'
 }
 
-export interface ChampionPick {
-  playerId: string
-  champion: string
-}
-
-export interface KdaEntry {
-  playerId: string
-  kills: number
-  deaths: number
-  assists: number
-}
-
-/** Estatísticas estendidas por jogador por partida (dano, cura, ouro, objetivos). Preenchido a partir do print pós-partida. */
-export interface MatchExtendedStat {
-  playerId: string
-  /** Dano total a campeões */
-  damageToChampions?: number
-  /** Dano total causado (geral) */
-  totalDamageDealt?: number
-  /** Dano físico/mágico/verdadeiro a campeões */
-  physicalDamageToChampions?: number
-  magicDamageToChampions?: number
-  trueDamageToChampions?: number
-  /** Dano recebido */
-  damageReceived?: number
-  physicalDamageReceived?: number
-  magicDamageReceived?: number
-  trueDamageReceived?: number
-  /** Dano curado */
-  damageHealed?: number
-  /** Dano automitigado (quanto o jogador “tankou”) */
-  damageSelfMitigated?: number
-  /** Ouro recebido / gasto */
-  goldEarned?: number
-  goldSpent?: number
-  /** Tropas abatidas (CS) */
-  minionsKilled?: number
-  /** Torres / inibidores destruídos */
-  towersDestroyed?: number
-  inhibitorsDestroyed?: number
-  /** Dano total a torres */
-  damageToTowers?: number
-  /** Maior sequência de abates (kills sem morrer) */
-  largestKillStreak?: number
-  /** Maior multiabate: 2 = Double, 3 = Triple, 4 = Quadra, 5 = Penta */
-  largestMultikill?: number
-}
-
+/** Partida simples: só vencedores, perdedores e data. Sem picks nem KDA. */
 export interface Match {
   id: string
   winnerIds: string[]
   loserIds: string[]
-  picks: ChampionPick[]
-  kda?: KdaEntry[]
-  /** Estatísticas de dano, cura, ouro etc. por jogador (do print pós-partida) */
-  matchExtendedStats?: MatchExtendedStat[]
-  /** URL ou data URL da imagem/print da partida (visível no histórico) */
-  imageUrl?: string
   createdAt: string
-  /** Se true, a partida fica visível no histórico mas não conta para vitórias, derrotas, KDA nem streaks (ex.: em observação/manutenção). */
+  /** Se true, aparece no histórico mas não conta para ranking/ELO (ex.: em observação). */
   excludeFromStats?: boolean
 }
 
@@ -73,23 +24,16 @@ export interface PlayerStats {
   wins: number
   losses: number
   winRate: string
-  championPlays: { champion: string; count: number; wins: number; kills: number; deaths: number; assists: number; ratio: number; lastMatchCreatedAt?: string }[]
-  /** KDA agregado (soma de todas as partidas com KDA preenchido) */
-  kda?: { kills: number; deaths: number; assists: number; games: number }
-  /** Média KDA formatada (ex: "5.2 / 4.1 / 8.0") */
-  avgKda?: string
-  /** Patente no sistema LoL (ex: "Ouro 2", "Prata 4") */
+  /** Degrau na escada ELO (0 = Ferro 4, +1 por vitória, -1 por derrota). */
+  eloStep: number
+  /** Label do ELO (ex: "Ouro 2") para exibição. */
   patente?: string
-  /** Tier para estilo do badge (ferro, bronze, prata, ouro, ...) */
+  /** Tier para estilo/emblem (ferro, bronze, ouro, ...). */
   patenteTier?: string
-  /** Sequência atual: tipo e quantidade (ex: 3V ou 2D) */
-  streak?: { type: 'V' | 'D'; count: number }
-  /** Maior sequência de vitórias */
-  bestWinStreak?: number
-  /** Conquistas desbloqueadas (id para buscar ícone e categoria) */
-  achievements?: { id: string; name: string }[]
-  /** Últimos resultados (mais recente primeiro): 'W' | 'L' */
+  /** Últimos resultados (mais recente primeiro): 'W' | 'L'. */
   lastResults?: ('W' | 'L')[]
-  /** Passo ELO (0 = Ferro 4, 1 = Ferro 3, ...) para desempate em destaques e ranking */
-  eloStep?: number
+  /** Sequência atual (ex: 3V ou 2D). */
+  streak?: { type: 'V' | 'D'; count: number }
+  /** Maior sequência de vitórias. */
+  bestWinStreak?: number
 }

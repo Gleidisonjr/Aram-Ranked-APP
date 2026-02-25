@@ -1,5 +1,5 @@
 /**
- * ARAM Ranked 2 — versão simples (sem KDA, sem campeões).
+ * Aranked Cabaré — versão simplificada (sem KDA, sem campeões).
  * Visual e UX iguais ao Cabaré v1; lógica simplificada.
  * Projeto completo está em main-cabare-v1.ts.
  */
@@ -78,12 +78,23 @@ function addPlayer(name: string) {
   rerender()
 }
 
-function addMatchFromSortear(winnerIds: string[], loserIds: string[]): void {
+function getTodayInBrazil(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: BR_TIMEZONE })
+}
+
+function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtDate?: string): void {
+  const createdAt = createdAtDate?.trim()
+    ? (() => {
+        const [y, m, d] = createdAtDate.slice(0, 10).split('-').map(Number)
+        if (y && m && d) return new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0)).toISOString()
+        return new Date().toISOString()
+      })()
+    : new Date().toISOString()
   const match: Match = {
     id: `m-${Date.now()}`,
     winnerIds,
     loserIds,
-    createdAt: new Date().toISOString(),
+    createdAt,
   }
   matches = [match, ...matches]
   saveMatches(matches)
@@ -119,7 +130,7 @@ function createHeader() {
   const h = document.createElement('header')
   h.className = 'header'
   h.innerHTML = `
-    <h1>ARAM Ranked 2</h1>
+    <h1>Aranked Cabaré</h1>
     <p class="subtitle">Ranking — vitórias, derrotas e ELO</p>
   `
   return h
@@ -145,29 +156,34 @@ function createRankingSection(ranking: PlayerStats[]) {
   section.className = 'card ranking-section'
   const rankingBgUrl = getChampionSplashUrl('Thresh', 1) ?? ''
   const rankingBgStyle = rankingBgUrl ? ` style="background-image: url(${escapeHtml(rankingBgUrl)})"` : ''
-  const headers = ['#', 'Jogador', 'ELO', 'V/D', 'Últimos', 'Win%']
+  const headers = ['Jogador', 'ELO', 'V/D', 'Últimos', 'Win%']
   const winrateClass = (winRateStr: string) => {
     const num = parseFloat(winRateStr)
     if (Number.isNaN(num)) return ''
     return num >= 75 ? 'winrate--elite' : num >= 50 ? 'winrate--pos' : 'winrate--neg'
   }
+  const totalPlayers = ranking.length
   const rows = ranking
     .map((s, i) => {
       const pos = i + 1
       const name = escapeHtml(s.player.name)
       const badge = getPlayerBadgeHtml(s.player)
       const tierClass = s.patenteTier ? ` patente-${s.patenteTier}` : ''
+      const nameInnerTierClass = s.patenteTier ? ` name-inner--${s.patenteTier}` : ' name-inner--unranked'
+      const nameInnerClass = s.player.badge === 'creator' ? ' name-inner--boss' : nameInnerTierClass
+      const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Segui o líder!">Líder</span>' : ''
+      const viceLeaderTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+      const lanternTag = pos === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna do ranking">Lanterna</span>' : ''
       const rankEmblemUrl = getRankEmblemUrl(s.patenteTier ?? 'iron')
+      const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile" title="Ver perfil">${name}</button>${badge}${leaderTag}${viceLeaderTag}${lanternTag}</span>`
       const nameCellWithEmblem = rankEmblemUrl
-        ? `<span class="name-cell-with-emoji"><img class="patente-emblem patente-emblem--${s.patenteTier ?? 'none'}" src="${escapeHtml(rankEmblemUrl)}" alt="" width="28" height="28" /></span><button type="button" class="name-btn-profile" title="Ver perfil">${name}</button>${badge}`
-        : `<button type="button" class="name-btn-profile" title="Ver perfil">${name}</button>${badge}`
+        ? `<span class="name-cell-with-emoji"><img class="patente-emblem patente-emblem--${s.patenteTier ?? 'none'}" src="${escapeHtml(rankEmblemUrl)}" alt="" width="28" height="28" /></span>${nameCellHtml}`
+        : nameCellHtml
       const lastDots = (s.lastResults ?? [])
         .map((r) => `<span class="result-dot ${r === 'W' ? 'win' : 'loss'}" title="${r === 'W' ? 'Vitória' : 'Derrota'}">${r === 'W' ? 'V' : 'D'}</span>`)
         .join('')
-      const rankDisplay = pos === 1 ? '<span class="rank-medal" aria-hidden="true">🥇</span>' : pos === 2 ? '<span class="rank-medal" aria-hidden="true">🥈</span>' : pos === 3 ? '<span class="rank-medal" aria-hidden="true">🥉</span>' : String(pos)
       const wrClass = winrateClass(s.winRate)
       return `<tr data-player-id="${escapeHtml(s.player.id)}">
-        <td class="rank-num-cell"><span class="rank-num">${rankDisplay}</span></td>
         <td class="name">${nameCellWithEmblem}</td>
         <td><div class="patente-cell"><span class="patente-badge${tierClass}">${escapeHtml(s.patente ?? '—')}</span></div></td>
         <td><div class="vd-cell"><span class="vd-wins">${s.wins}</span><span class="vd-sep"> — </span><span class="vd-losses">${s.losses}</span></div></td>
@@ -212,20 +228,26 @@ function createRankingSection(ranking: PlayerStats[]) {
   })
   const cardsContainer = section.querySelector('.ranking-cards')
   if (cardsContainer) {
+    const totalPlayers = ranking.length
     ranking.forEach((s, i) => {
       const card = document.createElement('div')
       card.className = 'ranking-card'
       card.setAttribute('role', 'listitem')
       const pos = i + 1
+      const nameInnerTierClass = s.patenteTier ? ` name-inner--${s.patenteTier}` : ' name-inner--unranked'
+      const nameInnerClass = s.player.badge === 'creator' ? ' name-inner--boss' : nameInnerTierClass
+      const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Líder">Líder</span>' : ''
+      const viceLeaderTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+      const lanternTag = pos === totalPlayers && totalPlayers > 0 ? ' <span class="player-badge-lantern" title="Lanterna">Lanterna</span>' : ''
+      const nameCellHtml = `<span class="name-inner${nameInnerClass}"><button type="button" class="name-btn-profile">${escapeHtml(s.player.name)}</button>${getPlayerBadgeHtml(s.player)}${leaderTag}${viceLeaderTag}${lanternTag}</span>`
       const rankEmblemUrl = getRankEmblemUrl(s.patenteTier ?? 'iron')
       const nameCellWithEmblem = rankEmblemUrl
-        ? `<span class="name-cell-with-emoji"><img class="patente-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="24" height="24" /></span><button type="button" class="name-btn-profile">${escapeHtml(s.player.name)}</button>${getPlayerBadgeHtml(s.player)}`
-        : `<button type="button" class="name-btn-profile">${escapeHtml(s.player.name)}</button>${getPlayerBadgeHtml(s.player)}`
+        ? `<span class="name-cell-with-emoji"><img class="patente-emblem" src="${escapeHtml(rankEmblemUrl)}" alt="" width="24" height="24" /></span>${nameCellHtml}`
+        : nameCellHtml
       const lastDots = (s.lastResults ?? []).map((r) => `<span class="result-dot ${r === 'W' ? 'win' : 'loss'}">${r === 'W' ? 'V' : 'D'}</span>`).join('')
       const wrClass = winrateClass(s.winRate)
       card.innerHTML = `
         <div class="ranking-card-header">
-          <span class="ranking-card-rank rank-num">${pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos}</span>
           <div class="ranking-card-name-wrap">${nameCellWithEmblem}</div>
         </div>
         <div class="ranking-card-body">
@@ -353,11 +375,12 @@ function createHistorySection() {
   `
   const list = section.querySelector('.history-list')!
   const nameById = new Map(players.map((p) => [p.id, p.name]))
-  const toShow = matches.slice(0, 40)
+  /* Só exibe no histórico as partidas consideradas (não desconsideradas). */
+  const toShow = matches.filter((m) => !m.excludeFromStats).slice(0, 40)
   if (toShow.length === 0) {
-    list.innerHTML = '<p class="empty-hint">Nenhuma partida ainda.</p>'
+    list.innerHTML = '<p class="empty-hint">Nenhuma partida considerada ainda.</p>'
   } else {
-    const total = matches.length
+    const total = toShow.length
     toShow.forEach((m, i) => {
       const partidaNum = total - i
       const winnerNames = m.winnerIds.map((id) => nameById.get(id) ?? id).join(', ')
@@ -701,7 +724,9 @@ function createCreateMatchModal(): HTMLElement {
       alert('Adicione pelo menos um jogador em cada time (vencedores e perdedores).')
       return
     }
-    addMatchFromSortear(winnerIds, loserIds)
+    const dateInput = formEl.querySelector('.create-match-date') as HTMLInputElement
+    const dateStr = dateInput?.value?.trim() ?? ''
+    addMatchFromSortear(winnerIds, loserIds, dateStr || undefined)
     root.classList.remove('open')
   })
   return root
@@ -723,8 +748,15 @@ function showCreateMatchModal(): void {
   const root = document.getElementById('create-match-modal')
   const formEl = root?.querySelector('#create-match-form')
   if (!root || !formEl) return
+  const today = getTodayInBrazil()
   const allOptions = players.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
   formEl.innerHTML = `
+    <div class="edit-match-top mb-4 flex flex-wrap items-end gap-4">
+      <label class="flex flex-col gap-1">
+        <span class="text-slate-500 text-sm">Data da partida</span>
+        <input type="date" class="create-match-date rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(today)}" />
+      </label>
+    </div>
     <div class="edit-match-body">
       <div class="edit-match-main flex flex-wrap gap-6">
         <div class="edit-match-col edit-match-col-winners">

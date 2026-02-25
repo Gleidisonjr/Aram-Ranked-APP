@@ -431,15 +431,11 @@ body {
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.ranking-table th:first-child { width: 2rem; min-width: 2rem; }
-.ranking-table th:nth-child(2) { width: 24%; min-width: 9rem; }   /* Jogador */
-.ranking-table th:nth-child(3) { width: 11%; min-width: 5.5rem; } /* ELO */
-.ranking-table th:nth-child(4) { width: 5%; min-width: 3.5rem; }  /* V/D */
-.ranking-table th:nth-child(5) { width: 7%; min-width: 4rem; }    /* Últimos */
-.ranking-table th:nth-child(6) { width: 6%; min-width: 3.5rem; color: #fff; }   /* Win% */
-.ranking-table th:nth-child(7) { width: 10%; min-width: 4.5rem; color: #fff; }  /* KDA */
-.ranking-table th:nth-child(8) { width: 5%; min-width: 3rem; color: #fff; }     /* Ratio */
-.ranking-table th:nth-child(9), .ranking-table th:nth-child(10) { width: 14%; min-width: 6rem; } /* Mais jogado, Melhor */
+.ranking-table th:first-child { width: 28%; min-width: 9rem; }   /* Jogador */
+.ranking-table th:nth-child(2) { width: 14%; min-width: 5.5rem; } /* ELO */
+.ranking-table th:nth-child(3) { width: 8%; min-width: 3.5rem; }  /* V/D */
+.ranking-table th:nth-child(4) { width: 12%; min-width: 4rem; }    /* Últimos */
+.ranking-table th:nth-child(5) { width: 8%; min-width: 3.5rem; }   /* Win% */
 .ranking-table td {
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--border);
@@ -449,30 +445,6 @@ body {
 }
 .ranking-table tbody tr:last-child td { border-bottom: none; }
 .ranking-table tbody tr:hover td { background: var(--bg-card-hover); }
-
-.ranking-table th:first-child,
-.ranking-table .rank-num-cell {
-  width: 2rem;
-  min-width: 2rem;
-  max-width: 2rem;
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
-  box-sizing: border-box;
-  text-align: center;
-}
-.ranking-table .rank-num-cell .rank-num { display: inline-block; }
-.ranking-table .rank-num {
-  font-weight: 800;
-  font-size: 0.9rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-align: center;
-}
-.ranking-table .rank-num.rank-num--gold { color: #FFD700; }
-.ranking-table .rank-num.rank-num--silver { color: #C0C0C0; }
-.ranking-table .rank-num.rank-num--bronze { color: #CD7F32; }
-.ranking-table .rank-num.rank-num--white { color: #fff; }
-.ranking-table .rank-num .rank-medal { font-size: 1.1rem; line-height: 1; }
 
 /* Jogador: emblema do elo centralizado entre o # e o nome + nome + badges */
 .ranking-table .name {
@@ -485,7 +457,7 @@ body {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  margin-left: 0.35rem;
+  margin-right: 0.35rem;
 }
 .ranking-table .name .name-inner {
   display: inline-flex;
@@ -539,6 +511,19 @@ body {
 }
 
 /* Nome do jogador Boss: mesmo gradiente da tag (ranking, cards, perfil, sortear) */
+/* Nome do jogador com a cor do tier (ELO), igual à versão 1 */
+.ranking-table .name-inner--iron .name-btn-profile { color: #a8a8a8; }
+.ranking-table .name-inner--bronze .name-btn-profile { color: #cd7f32; }
+.ranking-table .name-inner--silver .name-btn-profile { color: #c0c0c0; }
+.ranking-table .name-inner--gold .name-btn-profile { color: #ffd700; }
+.ranking-table .name-inner--platinum .name-btn-profile { color: #e5e4e2; }
+.ranking-table .name-inner--emerald .name-btn-profile { color: #50c878; }
+.ranking-table .name-inner--diamond .name-btn-profile { color: #b9f2ff; }
+.ranking-table .name-inner--master .name-btn-profile { color: #9966cc; }
+.ranking-table .name-inner--grandmaster .name-btn-profile { color: #cc0000; }
+.ranking-table .name-inner--challenger .name-btn-profile { color: #f0c674; }
+.ranking-table .name-inner--unranked .name-btn-profile { color: var(--text); }
+
 .name-inner--boss .name-btn-profile,
 .player-name-boss {
   background: linear-gradient(120deg, #f0fdfa 0%, #ccfbf1 25%, #5eead4 50%, #2dd4bf 100%);
@@ -565,6 +550,20 @@ body {
   background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
   border: 1px solid rgba(251, 191, 36, 0.6);
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+}
+/* Segundo lugar: Vice-líder */
+.player-badge-vice-leader {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  color: #0d0d0f;
+  background: linear-gradient(135deg, #c0c0c0 0%, #94a3b8 50%, #64748b 100%);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 0 6px rgba(148, 163, 184, 0.3);
 }
 /* Último lugar: Lanterna do ranking */
 .player-badge-lantern {
@@ -643,17 +642,23 @@ body {
 .ranking-table .kda-ratio-val.kda-ratio--pos { color: var(--win); }
 .ranking-table .kda-ratio-val.kda-ratio--neg { color: var(--loss); }
 .ranking-table .kda-ratio-val.kda-ratio--elite { color: #fbbf24; font-weight: 700; }
+.ranking-table th:first-child,
+.ranking-table th:nth-child(2),
+.ranking-table th:nth-child(3),
 .ranking-table th:nth-child(4),
 .ranking-table th:nth-child(5),
-.ranking-table th:nth-child(6),
 .ranking-table .vd-cell,
 .ranking-table .last-results-cell {
   text-align: center;
 }
-/* td > div.patente-cell | vd-cell | last-results-cell: alinhamento das colunas */
+.ranking-table td:nth-child(2),
 .ranking-table td:nth-child(3),
 .ranking-table td:nth-child(4),
 .ranking-table td:nth-child(5) {
+  text-align: center;
+}
+.ranking-table td.name {
+  justify-content: center;
   text-align: center;
 }
 
@@ -662,6 +667,7 @@ body {
   white-space: nowrap;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
 }
 .ranking-table .patente-emblem {

@@ -1,5 +1,5 @@
 /**
- * Store para ARAM Ranked 2 — versão simples (só vitórias/derrotas, ELO, sem KDA/campeões).
+ * Store para Aranked Cabaré — versão simplificada (só vitórias/derrotas, ELO, sem KDA/campeões).
  * Projeto completo está em store-cabare-v1.ts.
  */
 
@@ -9,9 +9,9 @@ const PLAYERS_KEY = 'aram-ranked-2-players'
 const MATCHES_KEY = 'aram-ranked-2-matches'
 const SEASON_KEY = 'aram-ranked-2-season'
 
-/** Partidas #21 em diante (e #28) não contam para o ranking. Considerar apenas até a partida #20. Mantidas no histórico com tag "Não considerado". */
+/** Partidas #22 em diante (#22 a #34) não contam para o ranking. Consideradas: 1 a 21. Mantidas no histórico com tag "Não considerado". */
 const EXCLUDED_MATCH_NUMBERS = new Set(
-  Array.from({ length: 20 }, (_, i) => 21 + i) /* 21..40; 28 incluído */
+  Array.from({ length: 13 }, (_, i) => 22 + i) /* 22..34 */
 )
 
 function matchNumberFromId(id: string): number | null {
@@ -23,7 +23,10 @@ function matchNumberFromId(id: string): number | null {
 
 function normalizeMatch(m: { id: string; winnerIds?: string[]; loserIds?: string[]; createdAt?: string; excludeFromStats?: boolean }): Match {
   const num = matchNumberFromId(m.id)
-  const excludeFromStats = m.excludeFromStats ?? (num !== null && EXCLUDED_MATCH_NUMBERS.has(num))
+  /* Sempre pelo número: 1–20 consideradas, 21–34 não consideradas. Ignora valor salvo para ids numéricos. */
+  const excludeFromStats = num !== null
+    ? EXCLUDED_MATCH_NUMBERS.has(num)
+    : (m.excludeFromStats ?? false)
   return {
     id: m.id,
     winnerIds: m.winnerIds ?? [],
@@ -139,8 +142,12 @@ export function mergeRankingData(
 
   const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches.map(normalizeMatch)
   const merged: Match[] = matchesToUse.map((m) => {
-    const local = localById.get(m.id)
-    return { ...m, excludeFromStats: local?.excludeFromStats ?? m.excludeFromStats }
+    const num = matchNumberFromId(m.id)
+    /* Para partidas com número (ex.: m-print-20), sempre usar a regra: 1–20 consideradas, 21–34 não. Não usar valor do localStorage. */
+    const excludeFromStats = num !== null
+      ? EXCLUDED_MATCH_NUMBERS.has(num)
+      : (localById.get(m.id)?.excludeFromStats ?? m.excludeFromStats)
+    return { ...m, excludeFromStats: excludeFromStats || undefined }
   })
   merged.sort((a, b) => {
     const da = a.createdAt ? new Date(a.createdAt).getTime() : 0

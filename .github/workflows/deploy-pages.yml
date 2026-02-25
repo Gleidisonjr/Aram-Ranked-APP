@@ -39,6 +39,7 @@ jobs:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
           npm run build
+          echo "=== Build concluído (commit ${{ github.sha }}) ==="
           echo "=== Conteudo do index.html (verificar base path) ==="
           cat dist/index.html
 

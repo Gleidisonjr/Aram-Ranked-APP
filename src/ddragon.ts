@@ -56,6 +56,15 @@ export async function loadChampionData(): Promise<void> {
 }
 
 /**
+ * Retorna a lista de todos os campeões (nomes canônicos) para autocomplete/select.
+ * Requer loadChampionData() já chamado.
+ */
+export function getChampionList(): string[] {
+  if (!cachedChampionIds) return []
+  return [...new Set(cachedChampionIds.values())].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+}
+
+/**
  * Retorna o nome canônico do campeão (case-insensitive).
  * Ex: "varus", "VARUS" → "Varus". Usar ao salvar para que estatísticas e OTP funcionem corretamente.
  */

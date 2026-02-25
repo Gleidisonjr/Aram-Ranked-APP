@@ -18,7 +18,7 @@ import {
   type ExtractedMatchData,
 } from './store'
 // import type { ImportPrintData } from './store' // usado na createPrintImportSection (comentada)
-import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls, getCanonicalChampionName } from './ddragon'
+import { loadChampionData, getChampionIconUrl, getRankEmblemUrl, getChampionSplashUrl, getChampionSplashUrls, getCanonicalChampionName, getChampionList } from './ddragon'
 
 /** Toca um som opcional da pasta public/sounds/. Use para sortear: "sortear-start" (ao clicar) e "sortear-done" (ao exibir resultado). */
 function playSound(name: string): void {
@@ -115,16 +115,31 @@ function addMatch(winnerIds: string[], loserIds: string[], picks: ChampionPick[]
   return match
 }
 
-async function updateMatch(matchId: string, picks: ChampionPick[], kda: KdaEntry[], imageUrl?: string) {
+async function updateMatch(
+  matchId: string,
+  winnerIds: string[],
+  loserIds: string[],
+  picks: ChampionPick[],
+  kda: KdaEntry[],
+  imageUrl?: string
+) {
   const idx = matches.findIndex((m) => m.id === matchId)
   if (idx < 0) return
+  if (winnerIds.length === 0 || loserIds.length === 0) return
   matches = [...matches]
-  matches[idx] = { ...matches[idx], picks, kda: kda.length ? kda : undefined, imageUrl: imageUrl?.trim() || undefined }
+  matches[idx] = {
+    ...matches[idx],
+    winnerIds,
+    loserIds,
+    picks,
+    kda: kda.length ? kda : undefined,
+    imageUrl: imageUrl?.trim() || undefined,
+  }
   saveMatches(matches)
   rerender()
   const result = await saveRankingToServer({ players, matches })
   if (!result.ok) {
-    console.warn('Salvo localmente. Persistência no servidor falhou:', result.error)
+    console.warn('Salvo localmente. Servidor falhou:', result.error)
   }
 }
 
@@ -517,8 +532,7 @@ function createToolbar() {
   const toolbarBgUrl = getChampionSplashUrl('Yasuo', 1) ?? ''
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const adminToolsHtml = isAdminMode()
-    ? `<button type="button" class="btn btn-secondary btn-sm btn-restore" title="Recarregar jogadores e partidas do ranking.json">Restaurar dados</button>
-       <button type="button" class="btn btn-secondary btn-sm btn-save-server" title="Enviar dados atuais para o servidor (atualiza ranking.json no GitHub)">Salvar no servidor</button>
+    ? `<button type="button" class="btn btn-secondary btn-sm btn-save-server" title="Enviar alterações para o servidor (única fonte)">Salvar</button>
        <button type="button" class="btn btn-secondary btn-sm btn-new-season">Nova temporada</button>`
     : ''
   bar.innerHTML = `
@@ -526,7 +540,7 @@ function createToolbar() {
     <div class="toolbar-overlay"></div>
     <div class="toolbar-inner">
       <span class="season-label">Temporada: <strong>${escapeHtml(loadSeason())}</strong></span>
-      <button type="button" class="btn btn-secondary btn-sm btn-refresh" title="Buscar atualizações do servidor (novas partidas)">Atualizar</button>
+      <button type="button" class="btn btn-secondary btn-sm btn-refresh" title="Recarregar do servidor">Atualizar</button>
       ${adminToolsHtml}
     </div>
   `
@@ -546,7 +560,6 @@ function createToolbar() {
       btn.textContent = 'Atualizar'
     }
   })
-  bar.querySelector('.btn-restore')?.addEventListener('click', () => restoreFromFile())
   bar.querySelector('.btn-save-server')?.addEventListener('click', async () => {
     const btn = bar.querySelector('.btn-save-server')
     if (btn instanceof HTMLButtonElement) {
@@ -554,8 +567,8 @@ function createToolbar() {
       btn.textContent = 'Salvando…'
       const result = await saveRankingToServer({ players, matches })
       btn.disabled = false
-      btn.textContent = 'Salvar no servidor'
-      if (result.ok) alert('Ranking salvo no servidor.')
+      btn.textContent = 'Salvar'
+      if (result.ok) alert('Salvo.')
       else alert(`Erro ao salvar: ${result.error}`)
     }
   })
@@ -1090,7 +1103,7 @@ function createHistorySection() {
           <span class="history-match-toggle" aria-hidden="true"></span>
           <span class="history-num" title="Partida ${partidaNum} de ${total}">#${partidaNum}</span>
           <span class="history-date">${escapeHtml(dateStr)}</span>
-          ${isAdminMode() ? `<button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar campeão e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>` : ''}
+          ${isAdminMode() ? `<button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar partida: times, campeões e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>` : ''}
         </div>
         <div class="history-match-body">
           ${m.imageUrl ? `
@@ -1152,8 +1165,8 @@ function createHistorySection() {
   return section
 }
 
-/** URL fixa da API no Vercel (proxy Riot). Altere aqui se o deploy tiver outra URL. */
-const RIOT_PROXY_BASE_URL = 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
+/** URL do proxy Riot (Match v5). No GitHub Pages não há backend; use um deploy separado ou deixe em branco. */
+const RIOT_PROXY_BASE_URL = (import.meta as { env?: { VITE_RIOT_PROXY?: string } }).env?.VITE_RIOT_PROXY?.replace(/\/+$/, '') ?? ''
 
 /** Prefixos das Americas (BR, NA, LAN, LAS). Quando o usuário cola só o número, tentamos cada um. */
 const AMERICAS_PREFIXES = ['BR1', 'NA1', 'LA1', 'LA2'] as const
@@ -2410,6 +2423,68 @@ function createOtpDetailModal(): HTMLElement {
 
 let currentEditMatch: Match | null = null
 
+function buildEditMatchPlayerRow(playerId: string, playerName: string, team: 'winner' | 'loser', champ: string, k: number, d: number, a: number): string {
+  const rowId = 'edit-match-row-' + playerId.replace(/"/g, '')
+  const champListId = 'edit-match-champ-list'
+  return `<div id="${rowId}" class="edit-match-row edit-match-row--${team} flex flex-wrap items-center gap-3 py-2 border-b border-slate-700/50" data-player-id="${escapeHtml(playerId)}" data-team="${team}">
+  <span class="edit-match-player-name min-w-[7rem] text-slate-200">${escapeHtml(playerName)}</span>
+  <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">Campeão</span><input type="text" class="edit-match-champ rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" list="${champListId}" data-player-id="${escapeHtml(playerId)}" value="${escapeHtml(champ)}" placeholder="Buscar campeão" autocomplete="off" /></label>
+  <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">K</span><input type="number" class="edit-match-k rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${k}" min="0" /></label>
+  <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">D</span><input type="number" class="edit-match-d rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${d}" min="0" /></label>
+  <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">A</span><input type="number" class="edit-match-a rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${a}" min="0" /></label>
+  <button type="button" class="edit-match-remove rounded-lg px-2 py-1 text-xs font-medium bg-red-900/60 hover:bg-red-800 text-white" title="Remover jogador da partida" data-player-id="${escapeHtml(playerId)}">Remover</button>
+</div>`
+}
+
+function getEditMatchFormPlayerIds(formEl: Element): Set<string> {
+  const set = new Set<string>()
+  formEl.querySelectorAll('.edit-match-row[data-player-id]').forEach((row) => {
+    const id = row.getAttribute('data-player-id')
+    if (id) set.add(id)
+  })
+  return set
+}
+
+function refreshEditMatchNav(formEl: Element): void {
+  const navEl = formEl.querySelector('.edit-match-nav-list')
+  if (!navEl) return
+  const nameById = new Map(players.map((p) => [p.id, p.name]))
+  const winnerRows: Element[] = []
+  const loserRows: Element[] = []
+  formEl.querySelectorAll('.edit-match-row[data-player-id][data-team]').forEach((row) => {
+    const team = row.getAttribute('data-team')
+    if (team === 'winner') winnerRows.push(row)
+    else loserRows.push(row)
+  })
+  const link = (playerId: string) => {
+    const name = nameById.get(playerId) ?? playerId
+    const rowId = `edit-match-row-${playerId}`
+    return `<a href="#${rowId}" class="edit-match-nav-link block rounded px-2 py-1 text-sm text-slate-300 hover:bg-slate-700 hover:text-white truncate" data-player-id="${escapeHtml(playerId)}" title="${escapeHtml(name)}">${escapeHtml(name)}</a>`
+  }
+  const winnerLinks = winnerRows.map((r) => link(r.getAttribute('data-player-id')!)).join('')
+  const loserLinks = loserRows.map((r) => link(r.getAttribute('data-player-id')!)).join('')
+  navEl.innerHTML = `
+    <div class="edit-match-nav-group">
+      <span class="edit-match-nav-group-title text-emerald-400 text-xs font-semibold uppercase tracking-wide">Vencedores</span>
+      <div class="edit-match-nav-group-links">${winnerLinks}</div>
+    </div>
+    <div class="edit-match-nav-group">
+      <span class="edit-match-nav-group-title text-red-400 text-xs font-semibold uppercase tracking-wide">Perdedores</span>
+      <div class="edit-match-nav-group-links">${loserLinks}</div>
+    </div>
+  `
+  navEl.querySelectorAll('.edit-match-nav-link').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault()
+      const playerId = (a as HTMLElement).dataset.playerId
+      if (playerId) {
+        const row = formEl.querySelector(`#edit-match-row-${CSS.escape(playerId)}`)
+        row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    })
+  })
+}
+
 function createEditMatchModal(): HTMLElement {
   const root = document.createElement('div')
   root.className = 'profile-modal edit-match-modal'
@@ -2420,9 +2495,10 @@ function createEditMatchModal(): HTMLElement {
       <button type="button" class="profile-modal-close" aria-label="Fechar">×</button>
       <div class="profile-modal-content edit-match-content">
         <h2 class="edit-match-title">Editar partida</h2>
-        <p class="edit-match-hint mb-4 text-slate-400 text-sm">Ajuste campeão e K/D/A de cada jogador.</p>
+        <p class="edit-match-hint mb-4 text-slate-400 text-sm">Ajuste times (vencedores e perdedores), campeões e K/D/A. Adicione ou remova jogadores.</p>
         <div class="edit-match-form"></div>
-        <div class="edit-match-actions mt-4 flex gap-3">
+        <div class="edit-match-actions mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" class="edit-match-invert-teams rounded-xl px-4 py-2 text-sm font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Trocar quem está como vencedor e quem está como perdedor (KDAs e campeões não mudam)">Inverter times (vencedores ↔ perdedores)</button>
           <button type="button" class="edit-match-save rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900">Salvar</button>
           <button type="button" class="edit-match-cancel rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white">Cancelar</button>
         </div>
@@ -2432,29 +2508,97 @@ function createEditMatchModal(): HTMLElement {
   root.querySelector('.profile-modal-overlay')!.addEventListener('click', () => root.classList.remove('open'))
   root.querySelector('.profile-modal-close')!.addEventListener('click', () => root.classList.remove('open'))
   root.querySelector('.edit-match-cancel')!.addEventListener('click', () => root.classList.remove('open'))
+
+  root.querySelector('.edit-match-invert-teams')!.addEventListener('click', () => {
+    const formEl = root.querySelector('.edit-match-form')
+    if (!formEl) return
+    const winnerContainer = formEl.querySelector('.edit-match-winner-rows')
+    const loserContainer = formEl.querySelector('.edit-match-loser-rows')
+    if (!winnerContainer || !loserContainer) return
+    const winnerRowNodes = Array.from(formEl.querySelectorAll('.edit-match-winner-rows .edit-match-row'))
+    const loserRowNodes = Array.from(formEl.querySelectorAll('.edit-match-loser-rows .edit-match-row'))
+    winnerRowNodes.forEach((row) => {
+      row.setAttribute('data-team', 'loser')
+      row.classList.remove('edit-match-row--winner')
+      row.classList.add('edit-match-row--loser')
+      loserContainer.appendChild(row)
+    })
+    loserRowNodes.forEach((row) => {
+      row.setAttribute('data-team', 'winner')
+      row.classList.remove('edit-match-row--loser')
+      row.classList.add('edit-match-row--winner')
+      winnerContainer.appendChild(row)
+    })
+    refreshEditMatchNav(formEl)
+  })
+
+  root.addEventListener('click', (e) => {
+    const formEl = root.querySelector('.edit-match-form')
+    if (!formEl) return
+    const target = e.target as HTMLElement
+    if (target.classList.contains('edit-match-remove')) {
+      const row = target.closest('.edit-match-row')
+      row?.remove()
+      refreshEditMatchNav(formEl)
+      const inForm = getEditMatchFormPlayerIds(formEl)
+      const optionsHtml = players.filter((p) => !inForm.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
+      const selW = formEl.querySelector('.edit-match-select-winner') as HTMLSelectElement
+      const selL = formEl.querySelector('.edit-match-select-loser') as HTMLSelectElement
+      if (selW) { selW.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selW.value = '' }
+      if (selL) { selL.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selL.value = '' }
+      return
+    }
+    if (target.classList.contains('edit-match-add-winner') || target.classList.contains('edit-match-add-loser')) {
+      const team = target.classList.contains('edit-match-add-winner') ? 'winner' : 'loser'
+      const select = (team === 'winner' ? formEl.querySelector('.edit-match-select-winner') : formEl.querySelector('.edit-match-select-loser')) as HTMLSelectElement
+      const playerId = select?.value
+      if (!playerId) return
+      const nameById = new Map(players.map((p) => [p.id, p.name]))
+      const name = nameById.get(playerId) ?? playerId
+      const container = team === 'winner' ? formEl.querySelector('.edit-match-winner-rows') : formEl.querySelector('.edit-match-loser-rows')
+      const rowHtml = buildEditMatchPlayerRow(playerId, name, team, '', 0, 0, 0)
+      container?.insertAdjacentHTML('beforeend', rowHtml)
+      refreshEditMatchNav(formEl)
+      const inForm = getEditMatchFormPlayerIds(formEl)
+      const optionsHtml = players.filter((p) => !inForm.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
+      const selW = formEl.querySelector('.edit-match-select-winner') as HTMLSelectElement
+      const selL = formEl.querySelector('.edit-match-select-loser') as HTMLSelectElement
+      if (selW) { selW.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selW.value = '' }
+      if (selL) { selL.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selL.value = '' }
+    }
+  })
+
   root.querySelector('.edit-match-save')!.addEventListener('click', async () => {
     const m = currentEditMatch
     if (!m) return
     const formEl = root.querySelector('.edit-match-form')
     if (!formEl) return
+    const winnerIds: string[] = []
+    const loserIds: string[] = []
     const picks: ChampionPick[] = []
     const kda: KdaEntry[] = []
     const imageUrlInput = formEl.querySelector('.edit-match-image-url') as HTMLInputElement
     const imageUrl = imageUrlInput?.value?.trim() ?? ''
-    formEl.querySelectorAll('.edit-match-row').forEach((row) => {
+    formEl.querySelectorAll('.edit-match-row[data-player-id][data-team]').forEach((row) => {
+      const playerId = row.getAttribute('data-player-id') ?? ''
+      const team = row.getAttribute('data-team') as 'winner' | 'loser'
+      if (!playerId) return
       const champInput = row.querySelector('.edit-match-champ') as HTMLInputElement
-      const playerId = champInput?.dataset?.playerId ?? ''
       const champRaw = champInput?.value?.trim() ?? ''
       const champ = champRaw ? getCanonicalChampionName(champRaw) : ''
       const k = parseInt((row.querySelector('.edit-match-k') as HTMLInputElement)?.value ?? '0', 10) || 0
       const d = parseInt((row.querySelector('.edit-match-d') as HTMLInputElement)?.value ?? '0', 10) || 0
       const a = parseInt((row.querySelector('.edit-match-a') as HTMLInputElement)?.value ?? '0', 10) || 0
-      if (playerId) {
-        picks.push({ playerId, champion: champ })
-        kda.push({ playerId, kills: k, deaths: d, assists: a })
-      }
+      if (team === 'winner') winnerIds.push(playerId)
+      else loserIds.push(playerId)
+      picks.push({ playerId, champion: champ })
+      kda.push({ playerId, kills: k, deaths: d, assists: a })
     })
-    await updateMatch(m.id, picks, kda, imageUrl)
+    if (winnerIds.length === 0 || loserIds.length === 0) {
+      alert('Cada partida precisa de pelo menos um vencedor e um perdedor.')
+      return
+    }
+    await updateMatch(m.id, winnerIds, loserIds, picks, kda, imageUrl)
     currentEditMatch = null
     root.classList.remove('open')
   })
@@ -2467,35 +2611,64 @@ function showEditMatchModal(m: Match) {
   if (!root || !formEl) return
   currentEditMatch = m
   const nameById = new Map(players.map((p) => [p.id, p.name]))
-  const allPlayerIds = [...m.winnerIds, ...m.loserIds]
   const pickByPlayer = new Map(m.picks.map((p) => [p.playerId, p.champion]))
   const kdaByPlayer = new Map((m.kda ?? []).map((e) => [e.playerId, e]))
-  const rows = allPlayerIds.map((playerId) => {
+  const winnerRows = m.winnerIds.map((playerId) => {
     const name = nameById.get(playerId) ?? playerId
     const champ = pickByPlayer.get(playerId) ?? ''
     const kda = kdaByPlayer.get(playerId)
-    const k = kda?.kills ?? 0
-    const d = kda?.deaths ?? 0
-    const a = kda?.assists ?? 0
-    return `<div class="edit-match-row flex flex-wrap items-center gap-3 py-2 border-b border-slate-700/50">
-      <span class="edit-match-player-name min-w-[8rem] text-slate-200">${escapeHtml(name)}</span>
-      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">Campeão</span><input type="text" class="edit-match-champ rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" data-player-id="${escapeHtml(playerId)}" value="${escapeHtml(champ)}" placeholder="Campeão" /></label>
-      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">K</span><input type="number" class="edit-match-k rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${k}" min="0" /></label>
-      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">D</span><input type="number" class="edit-match-d rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${d}" min="0" /></label>
-      <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">A</span><input type="number" class="edit-match-a rounded-lg px-2 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white w-14" data-player-id="${escapeHtml(playerId)}" value="${a}" min="0" /></label>
-    </div>`
+    return buildEditMatchPlayerRow(playerId, name, 'winner', champ, kda?.kills ?? 0, kda?.deaths ?? 0, kda?.assists ?? 0)
   }).join('')
+  const loserRows = m.loserIds.map((playerId) => {
+    const name = nameById.get(playerId) ?? playerId
+    const champ = pickByPlayer.get(playerId) ?? ''
+    const kda = kdaByPlayer.get(playerId)
+    return buildEditMatchPlayerRow(playerId, name, 'loser', champ, kda?.kills ?? 0, kda?.deaths ?? 0, kda?.assists ?? 0)
+  }).join('')
+  const inMatch = new Set([...m.winnerIds, ...m.loserIds])
+  const availableOptions = players.filter((p) => !inMatch.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
   const imageUrlVal = m.imageUrl ?? ''
+  const championNames = getChampionList()
+  const datalistOptions = championNames.map((ch) => `<option value="${escapeHtml(ch)}">`).join('')
   formEl.innerHTML = `
-    <div class="edit-match-row flex flex-wrap items-start gap-3 py-2 border-b border-slate-700/50">
-      <label class="flex flex-col gap-1 w-full max-w-md">
-        <span class="text-slate-500 text-sm">URL da imagem / print da partida (opcional)</span>
+    <div class="edit-match-top mb-3">
+      <label class="flex flex-col gap-1 max-w-md">
+        <span class="text-slate-500 text-sm">URL da imagem / print (opcional)</span>
         <input type="url" class="edit-match-image-url rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(imageUrlVal)}" placeholder="https://... ou data:image/..." />
-        <span class="text-slate-600 text-xs">Cole a URL ou data URL da imagem. Deixe vazio para remover.</span>
       </label>
     </div>
-    ${rows}
+    <datalist id="edit-match-champ-list">${datalistOptions}</datalist>
+    <div class="edit-match-body">
+      <nav class="edit-match-nav" aria-label="Jogadores da partida">
+        <div class="edit-match-nav-list"></div>
+      </nav>
+      <div class="edit-match-main">
+        <div class="edit-match-col edit-match-col-winners">
+          <h3 class="edit-match-col-title edit-match-col-title--winner">Time vencedor</h3>
+          <div class="edit-match-winner-rows">${winnerRows}</div>
+          <div class="edit-match-add-area">
+            <select class="edit-match-select-winner rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
+              <option value="">— Escolher jogador —</option>
+              ${availableOptions}
+            </select>
+            <button type="button" class="edit-match-add-winner rounded-lg px-3 py-1.5 text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white">Adicionar</button>
+          </div>
+        </div>
+        <div class="edit-match-col edit-match-col-losers">
+          <h3 class="edit-match-col-title edit-match-col-title--loser">Time perdedor</h3>
+          <div class="edit-match-loser-rows">${loserRows}</div>
+          <div class="edit-match-add-area">
+            <select class="edit-match-select-loser rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
+              <option value="">— Escolher jogador —</option>
+              ${availableOptions}
+            </select>
+            <button type="button" class="edit-match-add-loser rounded-lg px-3 py-1.5 text-sm font-medium bg-red-900/60 hover:bg-red-800 text-white">Adicionar</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `
+  refreshEditMatchNav(formEl)
   root.classList.add('open')
 }
 

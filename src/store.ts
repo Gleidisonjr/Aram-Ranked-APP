@@ -4,7 +4,6 @@ const PLAYERS_KEY = 'ranking-cabare-players'
 const MATCHES_KEY = 'ranking-cabare-matches'
 const SEASON_KEY = 'ranking-cabare-season'
 const RIVALS_KEY = 'ranking-cabare-rivals'
-const RANKING_JSON_URL = `${import.meta.env.BASE_URL}ranking.json`
 
 /** Nomes antigos/duplicados que não devem aparecer no ranking. */
 const REMOVED_PLAYER_NAMES = new Set([
@@ -29,7 +28,11 @@ const TEST_ELO_OVERRIDES = new Map<string, { label: string; tier: string }>([
   ['p-2-22cm50kmes190cm', { label: 'Boss', tier: 'boss' }],
 ])
 
-/** URL da API para salvar o ranking permanentemente (Vercel). */
+const basePath = (import.meta.env.BASE_URL ?? '').replace(/\/+$/, '')
+const getOrigin = () => (typeof location !== 'undefined' ? location.origin : '')
+/** Ranking: no GitHub Pages carrega do próprio site; em dev do local. */
+const RANKING_JSON_URL = `${getOrigin()}${basePath ? basePath + '/' : '/'}ranking.json`
+/** API que salva no GitHub (pasta api/ no Vercel ou outro). Configure VITE_API_BASE se usar outra URL. */
 const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.replace(/\/+$/, '')
   ?? 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
 const SAVE_RANKING_API_URL = `${API_BASE}/api/save-ranking`
@@ -95,7 +98,7 @@ export async function saveRankingToServer(data: RankingData): Promise<{ ok: bool
   }
 }
 
-/** Carrega dados do arquivo ranking.json (atualizado quando você envia o print no chat). */
+/** Carrega ranking do site (ranking.json — no GitHub Pages vem do repositório). Se falhar, retorna null e o app usa cache (localStorage). */
 export async function loadFromFile(): Promise<RankingData | null> {
   try {
     const url = `${RANKING_JSON_URL}?t=${Date.now()}`
@@ -222,8 +225,22 @@ export function mergeRankingData(
   matchesToUse.forEach((m) => {
     const fromFile = fileMatchIds.has(m.id)
     if (fromFile) {
-      // Arquivo é a fonte da verdade: não mesclar com localStorage.
-      byId.set(m.id, m)
+      const local = localById.get(m.id)
+      // Se o usuário editou no navegador (campeões, KDA, imagem), preservar essas edições ao mesclar.
+      const localHasMorePicks = local?.picks?.some((p) => (p.champion ?? '').trim()) ?? false
+      const filePicksEmpty = (m.picks ?? []).every((p) => !(p.champion ?? '').trim())
+      const localHasImage = !!(local?.imageUrl?.trim())
+      if (local && (localHasMorePicks || (filePicksEmpty && (local.picks?.length ?? 0) > 0) || localHasImage)) {
+        byId.set(m.id, {
+          ...m,
+          picks: local.picks ?? m.picks,
+          kda: local.kda ?? m.kda,
+          imageUrl: local.imageUrl ?? m.imageUrl,
+          matchExtendedStats: local.matchExtendedStats ?? m.matchExtendedStats,
+        })
+      } else {
+        byId.set(m.id, m)
+      }
       return
     }
     const local = localById.get(m.id)

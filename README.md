@@ -56,7 +56,7 @@ Aplicativo web para ranking de partidas **ARAM** (League of Legends) entre amigo
 
 - **Vite** + **TypeScript**
 - **Tailwind CSS**
-- Dados: `public/ranking.json` (fonte principal) + `localStorage` (merge no carregamento)
+- Dados: `public/ranking.json` (fonte principal; no GitHub Pages o app carrega esse arquivo do próprio site) + `localStorage` (merge no carregamento)
 - Ícones: [Data Dragon](https://developer.riotgames.com/docs/lol#data-dragon) (campeões) e [Community Dragon](https://raw.communitydragon.org) (emblemas de patente)
 
 ---

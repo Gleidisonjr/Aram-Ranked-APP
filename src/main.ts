@@ -45,7 +45,11 @@ let matches = loadMatches()
 let matchLimit: number | null = null
 
 async function init() {
-  const file = await loadFromFile()
+  let file = await loadFromFile()
+  if (!file) {
+    await new Promise((r) => setTimeout(r, 500))
+    file = await loadFromFile()
+  }
   const merged = mergeRankingData(file, loadPlayers(), loadMatches())
   players = merged.players
   matches = merged.matches
@@ -84,7 +88,8 @@ function startNewSeason() {
 }
 
 function rerender() {
-  const filtered = matchLimit != null ? matches.slice(0, matchLimit) : matches
+  const base = matchLimit != null ? matches.slice(0, matchLimit) : matches
+  const filtered = base.filter((m) => !m.excludeFromStats)
   const ranking = computeRanking(players, filtered)
   renderApp(ranking)
 }
@@ -99,15 +104,33 @@ function addPlayer(name: string) {
   rerender()
 }
 
-function addMatch(winnerIds: string[], loserIds: string[], picks: ChampionPick[], kda?: KdaEntry[]): Match | null {
+/** Cria data só com dia (sem hora) para não depender do relógio da máquina. Usa meio-dia para evitar fuso. */
+function toDateOnlyISO(dateStr?: string): string {
+  if (dateStr && /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
+    if (y && m && d) return new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0)).toISOString()
+  }
+  const now = new Date()
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0)).toISOString()
+}
+
+function addMatch(
+  winnerIds: string[],
+  loserIds: string[],
+  picks: ChampionPick[],
+  kda?: KdaEntry[],
+  imageUrl?: string,
+  createdAtDate?: string
+): Match | null {
   if (winnerIds.length === 0 || loserIds.length === 0) return null
   const match: Match = {
-    id: `m-${Date.now()}`,
+    id: `m-manual-${Date.now()}`,
     winnerIds,
     loserIds,
     picks,
     kda: kda?.length ? kda : undefined,
-    createdAt: new Date().toISOString(),
+    createdAt: toDateOnlyISO(createdAtDate),
+    imageUrl: imageUrl?.trim() || undefined,
   }
   matches = [match, ...matches]
   saveMatches(matches)
@@ -121,7 +144,8 @@ async function updateMatch(
   loserIds: string[],
   picks: ChampionPick[],
   kda: KdaEntry[],
-  imageUrl?: string
+  imageUrl?: string,
+  excludeFromStats?: boolean
 ) {
   const idx = matches.findIndex((m) => m.id === matchId)
   if (idx < 0) return
@@ -134,6 +158,7 @@ async function updateMatch(
     picks,
     kda: kda.length ? kda : undefined,
     imageUrl: imageUrl?.trim() || undefined,
+    excludeFromStats: excludeFromStats ?? false,
   }
   saveMatches(matches)
   rerender()
@@ -143,10 +168,33 @@ async function updateMatch(
   }
 }
 
+let openEditMatchIdAfterRender: string | null = null
+
 function renderApp(ranking: PlayerStats[]) {
   const app = document.querySelector<HTMLDivElement>('#app')!
   app.innerHTML = ''
   app.appendChild(createLayout(ranking))
+  const hash = window.location.hash
+  if (hash && hash.startsWith('#match-')) {
+    const id = hash.slice(1)
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+  if (hash && hash.startsWith('#edit-')) {
+    const matchId = hash.slice(6)
+    const m = matches.find((x) => x.id === matchId)
+    if (m) requestAnimationFrame(() => showEditMatchModal(m))
+  }
+  if (openEditMatchIdAfterRender) {
+    const m = matches.find((x) => x.id === openEditMatchIdAfterRender)
+    if (m) {
+      openEditMatchIdAfterRender = null
+      requestAnimationFrame(() => showEditMatchModal(m))
+    } else {
+      openEditMatchIdAfterRender = null
+    }
+  }
 }
 
 export type HighlightBadge = { label: string; theme: 'positive' | 'negative' }
@@ -385,10 +433,12 @@ function createLayout(ranking: PlayerStats[]) {
   const modal = createProfileModal()
   const otpModal = createOtpDetailModal()
   const editMatchModal = createEditMatchModal()
-  const filteredMatches = matchLimit != null ? matches.slice(0, matchLimit) : matches
+  const createMatchModal = createCreateMatchModal()
+  const baseMatches = matchLimit != null ? matches.slice(0, matchLimit) : matches
+  const filteredMatches = baseMatches.filter((m) => !m.excludeFromStats)
   const highlightsData = computeHighlightsData(ranking, filteredMatches)
   lastHighlightsData = highlightsData
-  // Ordem: Ranking → Sortear times → Destaques → Recordes → Histórico → Comparar jogadores → Comparar campeões → OTP por campeão → Estatísticas por campeão → Gráficos
+  // Ordem: Ranking → Sortear times (com Criar partida dentro) → Destaques → Recordes → Histórico → Adicionar partida → ...
   el.append(
     createHeader(),
     createToolbar(),
@@ -407,7 +457,8 @@ function createLayout(ranking: PlayerStats[]) {
     // createHallOfFameSection(matches, ranking), // Hall of Fame — comentado para implementar com mais calma depois
     modal,
     otpModal,
-    editMatchModal
+    editMatchModal,
+    createMatchModal
   )
   // Referências para seções comentadas (evita noUnusedLocals)
   if (false) void (_createRiotMatchSection_removed(), createDamageStatsSection(matches, ranking), createHallOfFameSection(matches, ranking))
@@ -707,14 +758,67 @@ function createSortearTimesSection() {
         <div class="sortear-actions flex flex-wrap gap-3 mt-5">
           <button type="button" class="sortear-again rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900 transition shadow">Sortear de novo</button>
           <button type="button" class="sortear-voltar rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white transition">Voltar</button>
+          ${isAdminMode() ? `
+          <button type="button" class="sortear-confirm-create sortear-confirm-create-1 rounded-xl px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" title="Cria a partida com Equipe 1 como vencedora. Depois você edita campeões e K/D/A no histórico.">Confirmar e criar partida (Equipe 1 venceu)</button>
+          <button type="button" class="sortear-confirm-create sortear-confirm-create-2 rounded-xl px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" title="Cria a partida com Equipe 2 como vencedora. Depois você edita campeões e K/D/A no histórico.">Confirmar e criar partida (Equipe 2 venceu)</button>
+          ` : ''}
         </div>
       `
+      resultEl.dataset.team1Ids = team1.map((p) => p.id).join(',')
+      resultEl.dataset.team2Ids = team2.map((p) => p.id).join(',')
       resultEl.querySelector('.sortear-again')?.addEventListener('click', () => (sortearBtn as HTMLButtonElement).click())
-      resultEl.querySelector('.sortear-voltar')?.addEventListener('click', () => { resultEl.innerHTML = '' })
+      resultEl.querySelector('.sortear-voltar')?.addEventListener('click', () => { resultEl.innerHTML = ''; delete resultEl.dataset.team1Ids; delete resultEl.dataset.team2Ids })
+      resultEl.querySelector('.sortear-confirm-create-1')?.addEventListener('click', () => confirmCreateMatchFromSortear(resultEl, true))
+      resultEl.querySelector('.sortear-confirm-create-2')?.addEventListener('click', () => confirmCreateMatchFromSortear(resultEl, false))
     }, 320)
   })
 
+  if (isAdminMode()) {
+    const createWrap = document.createElement('div')
+    createWrap.className = 'sortear-create-manual px-6 pb-6 pt-4 border-t border-slate-600/50'
+    createWrap.innerHTML = `
+      <h3 class="text-sm font-bold text-slate-300 mb-1">Criar partida (manual)</h3>
+      <p class="hint m-0 mb-3 text-slate-500 text-xs">Registre uma partida do zero: escolha vencedores, perdedores, campeões e K/D/A.</p>
+      <button type="button" class="btn btn-primary" id="sortear-section-create-match-btn">Criar partida</button>
+    `
+    createWrap.querySelector('#sortear-section-create-match-btn')?.addEventListener('click', () => showCreateMatchModal())
+    section.querySelector('.sortear-section-inner')?.appendChild(createWrap)
+  }
+
   return section
+}
+
+function confirmCreateMatchFromSortear(resultEl: HTMLElement, team1Wins: boolean) {
+  const team1Ids = (resultEl.dataset.team1Ids ?? '').split(',').filter(Boolean)
+  const team2Ids = (resultEl.dataset.team2Ids ?? '').split(',').filter(Boolean)
+  if (team1Ids.length === 0 || team2Ids.length === 0) return
+  const winnerIds = team1Wins ? team1Ids : team2Ids
+  const loserIds = team1Wins ? team2Ids : team1Ids
+  const allPlayers = [...winnerIds, ...loserIds]
+  const picks: ChampionPick[] = []
+  const kda: KdaEntry[] = []
+  resultEl.querySelectorAll<HTMLInputElement>('.champion-input').forEach((input) => {
+    const playerId = input.getAttribute('data-player-id')
+    if (!playerId || !allPlayers.includes(playerId)) return
+    const champRaw = input.value?.trim() ?? ''
+    const champion = champRaw ? getCanonicalChampionName(champRaw) : ''
+    picks.push({ playerId, champion })
+    kda.push({ playerId, kills: 0, deaths: 0, assists: 0 })
+  })
+  if (picks.length !== allPlayers.length) {
+    allPlayers.forEach((playerId) => {
+      if (!picks.some((p) => p.playerId === playerId)) {
+        picks.push({ playerId, champion: '' })
+        kda.push({ playerId, kills: 0, deaths: 0, assists: 0 })
+      }
+    })
+  }
+  const match = addMatch(winnerIds, loserIds, picks, kda, undefined, undefined)
+  if (match) {
+    saveRankingToServer({ players, matches }).then((r) => { if (!r.ok) console.warn('Servidor falhou:', r.error) })
+    openEditMatchIdAfterRender = match.id
+    rerender()
+  }
 }
 
 function createHeader() {
@@ -1020,20 +1124,17 @@ function createHistorySection() {
     list.innerHTML = '<p class="empty-hint">Nenhuma partida ainda.</p>'
   } else {
     const total = matches.length
-    const toShow = matches.slice(0, 20)
+    const historyLimit = 40
+    const toShow = matches.slice(0, historyLimit)
     toShow.forEach((m, i) => {
       const winnerNames = m.winnerIds.map((id) => nameById.get(id) ?? id)
       const loserNames = m.loserIds.map((id) => nameById.get(id) ?? id)
       const partidaNum = total - i
       const dateStr = m.createdAt
-        ? new Date(m.createdAt).toLocaleString('pt-BR', {
+        ? new Date(m.createdAt).toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: '2-digit',
             year: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
             timeZone: 'America/Sao_Paulo',
           })
         : '—'
@@ -1096,6 +1197,8 @@ function createHistorySection() {
       const matchCardBgStyle = matchCardBgUrl ? ` style="background-image: url(${escapeHtml(matchCardBgUrl)})"` : ''
       const row = document.createElement('div')
       row.className = 'history-match-card history-match-card--collapsed'
+      row.id = `match-${m.id}`
+      row.setAttribute('data-match-id', m.id)
       row.innerHTML = `
         <div class="history-match-card-bg"${matchCardBgStyle} aria-hidden="true"></div>
         <div class="history-match-card-overlay"></div>
@@ -1103,7 +1206,13 @@ function createHistorySection() {
           <span class="history-match-toggle" aria-hidden="true"></span>
           <span class="history-num" title="Partida ${partidaNum} de ${total}">#${partidaNum}</span>
           <span class="history-date">${escapeHtml(dateStr)}</span>
-          ${isAdminMode() ? `<button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar partida: times, campeões e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>` : ''}
+          ${m.excludeFromStats ? '<span class="history-tag-observation rounded px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40" title="Não conta para vitórias, derrotas, KDA nem streaks">* Em observação</span>' : ''}
+          ${isAdminMode() ? `
+          <label class="history-invalid-wrap inline-flex items-center gap-1.5 cursor-pointer" title="Marcar como inválida: não conta nas estatísticas (aplica ao salvar)">
+            <input type="checkbox" class="history-invalid-checkbox rounded border-slate-500 text-amber-500 focus:ring-amber-500/50" data-match-id="${escapeHtml(m.id)}" ${m.excludeFromStats ? ' checked' : ''} />
+            <span class="text-slate-400 text-xs whitespace-nowrap">Inválida</span>
+          </label>
+          <button type="button" class="history-edit-btn rounded-lg px-2 py-1 text-xs font-medium bg-slate-600 hover:bg-slate-500 text-white" title="Editar partida: times, campeões e KDA" data-match-id="${escapeHtml(m.id)}">Editar</button>` : ''}
         </div>
         <div class="history-match-body">
           ${m.imageUrl ? `
@@ -1142,6 +1251,25 @@ function createHistorySection() {
         const match = matches.find((m) => m.id === matchId)
         if (match) showEditMatchModal(match)
       })
+      const invalidCheckbox = row.querySelector('.history-invalid-checkbox') as HTMLInputElement
+      invalidCheckbox?.addEventListener('click', (e) => e.stopPropagation())
+      invalidCheckbox?.addEventListener('change', () => {
+        const matchId = invalidCheckbox.dataset.matchId
+        const match = matches.find((m) => m.id === matchId)
+        if (!match) return
+        const excludeFromStats = invalidCheckbox.checked
+        updateMatch(
+          match.id,
+          match.winnerIds,
+          match.loserIds,
+          match.picks ?? [],
+          match.kda ?? [],
+          match.imageUrl,
+          excludeFromStats
+        )
+        saveRankingToServer({ players, matches }).then((r) => { if (!r.ok) console.warn('Servidor falhou:', r.error) })
+      })
+      row.querySelector('.history-invalid-wrap')?.addEventListener('click', (e) => e.stopPropagation())
       header.addEventListener('click', () => {
         const collapsed = row.classList.toggle('history-match-card--collapsed')
         header.setAttribute('aria-expanded', String(!collapsed))
@@ -1155,10 +1283,10 @@ function createHistorySection() {
       })
       list.appendChild(row)
     })
-    if (matches.length > 20) {
+    if (matches.length > historyLimit) {
       const hint = document.createElement('p')
       hint.className = 'hint'
-      hint.textContent = `Mostrando as 20 mais recentes (${matches.length} no total).`
+      hint.textContent = `Mostrando as ${historyLimit} mais recentes (${matches.length} no total).`
       list.appendChild(hint)
     }
   }
@@ -2423,9 +2551,8 @@ function createOtpDetailModal(): HTMLElement {
 
 let currentEditMatch: Match | null = null
 
-function buildEditMatchPlayerRow(playerId: string, playerName: string, team: 'winner' | 'loser', champ: string, k: number, d: number, a: number): string {
+function buildEditMatchPlayerRow(playerId: string, playerName: string, team: 'winner' | 'loser', champ: string, k: number, d: number, a: number, champListId = 'edit-match-champ-list'): string {
   const rowId = 'edit-match-row-' + playerId.replace(/"/g, '')
-  const champListId = 'edit-match-champ-list'
   return `<div id="${rowId}" class="edit-match-row edit-match-row--${team} flex flex-wrap items-center gap-3 py-2 border-b border-slate-700/50" data-player-id="${escapeHtml(playerId)}" data-team="${team}">
   <span class="edit-match-player-name min-w-[7rem] text-slate-200">${escapeHtml(playerName)}</span>
   <label class="flex items-center gap-2"><span class="text-slate-500 text-sm">Campeão</span><input type="text" class="edit-match-champ rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" list="${champListId}" data-player-id="${escapeHtml(playerId)}" value="${escapeHtml(champ)}" placeholder="Buscar campeão" autocomplete="off" /></label>
@@ -2579,6 +2706,8 @@ function createEditMatchModal(): HTMLElement {
     const kda: KdaEntry[] = []
     const imageUrlInput = formEl.querySelector('.edit-match-image-url') as HTMLInputElement
     const imageUrl = imageUrlInput?.value?.trim() ?? ''
+    const excludeCheckbox = formEl.querySelector('.edit-match-exclude-from-stats') as HTMLInputElement
+    const excludeFromStats = excludeCheckbox?.checked ?? false
     formEl.querySelectorAll('.edit-match-row[data-player-id][data-team]').forEach((row) => {
       const playerId = row.getAttribute('data-player-id') ?? ''
       const team = row.getAttribute('data-team') as 'winner' | 'loser'
@@ -2598,7 +2727,7 @@ function createEditMatchModal(): HTMLElement {
       alert('Cada partida precisa de pelo menos um vencedor e um perdedor.')
       return
     }
-    await updateMatch(m.id, winnerIds, loserIds, picks, kda, imageUrl)
+    await updateMatch(m.id, winnerIds, loserIds, picks, kda, imageUrl, excludeFromStats)
     currentEditMatch = null
     root.classList.remove('open')
   })
@@ -2628,13 +2757,18 @@ function showEditMatchModal(m: Match) {
   const inMatch = new Set([...m.winnerIds, ...m.loserIds])
   const availableOptions = players.filter((p) => !inMatch.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
   const imageUrlVal = m.imageUrl ?? ''
+  const excludeChecked = m.excludeFromStats ? ' checked' : ''
   const championNames = getChampionList()
   const datalistOptions = championNames.map((ch) => `<option value="${escapeHtml(ch)}">`).join('')
   formEl.innerHTML = `
-    <div class="edit-match-top mb-3">
+    <div class="edit-match-top mb-3 flex flex-wrap items-start gap-4">
       <label class="flex flex-col gap-1 max-w-md">
         <span class="text-slate-500 text-sm">URL da imagem / print (opcional)</span>
         <input type="url" class="edit-match-image-url rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(imageUrlVal)}" placeholder="https://... ou data:image/..." />
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer mt-5">
+        <input type="checkbox" class="edit-match-exclude-from-stats rounded border-slate-500 text-amber-500 focus:ring-amber-500/50"${excludeChecked} />
+        <span class="text-slate-400 text-sm">Inválida (não conta nas estatísticas)</span>
       </label>
     </div>
     <datalist id="edit-match-champ-list">${datalistOptions}</datalist>
@@ -2661,6 +2795,183 @@ function showEditMatchModal(m: Match) {
             <select class="edit-match-select-loser rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
               <option value="">— Escolher jogador —</option>
               ${availableOptions}
+            </select>
+            <button type="button" class="edit-match-add-loser rounded-lg px-3 py-1.5 text-sm font-medium bg-red-900/60 hover:bg-red-800 text-white">Adicionar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+  refreshEditMatchNav(formEl)
+  root.classList.add('open')
+}
+
+function createCreateMatchModal(): HTMLElement {
+  const root = document.createElement('div')
+  root.className = 'profile-modal edit-match-modal'
+  root.id = 'create-match-modal'
+  root.innerHTML = `
+    <div class="profile-modal-overlay"></div>
+    <div class="profile-modal-panel edit-match-panel">
+      <button type="button" class="profile-modal-close" aria-label="Fechar">×</button>
+      <div class="profile-modal-content edit-match-content">
+        <h2 class="edit-match-title">Criar partida</h2>
+        <p class="edit-match-hint mb-4 text-slate-400 text-sm">Escolha os jogadores de cada time, campeões, K/D/A e (opcional) o print. A partida aparece no topo do histórico.</p>
+        <div class="edit-match-form" id="create-match-form"></div>
+        <div class="edit-match-actions mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" class="edit-match-invert-teams rounded-xl px-4 py-2 text-sm font-medium bg-slate-600 hover:bg-slate-500 text-white">Inverter times</button>
+          <button type="button" class="create-match-submit rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-900">Criar partida</button>
+          <button type="button" class="create-match-cancel rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  `
+  root.querySelector('.profile-modal-overlay')!.addEventListener('click', () => root.classList.remove('open'))
+  root.querySelector('.profile-modal-close')!.addEventListener('click', () => root.classList.remove('open'))
+  root.querySelector('.create-match-cancel')!.addEventListener('click', () => root.classList.remove('open'))
+
+  root.querySelector('.edit-match-invert-teams')!.addEventListener('click', () => {
+    const formEl = root.querySelector('#create-match-form')
+    if (!formEl) return
+    const winnerContainer = formEl.querySelector('.edit-match-winner-rows')
+    const loserContainer = formEl.querySelector('.edit-match-loser-rows')
+    if (!winnerContainer || !loserContainer) return
+    const winnerRowNodes = Array.from(formEl.querySelectorAll('.edit-match-winner-rows .edit-match-row'))
+    const loserRowNodes = Array.from(formEl.querySelectorAll('.edit-match-loser-rows .edit-match-row'))
+    winnerRowNodes.forEach((row) => {
+      row.setAttribute('data-team', 'loser')
+      row.classList.remove('edit-match-row--winner')
+      row.classList.add('edit-match-row--loser')
+      loserContainer.appendChild(row)
+    })
+    loserRowNodes.forEach((row) => {
+      row.setAttribute('data-team', 'winner')
+      row.classList.remove('edit-match-row--loser')
+      row.classList.add('edit-match-row--winner')
+      winnerContainer.appendChild(row)
+    })
+    refreshEditMatchNav(formEl)
+  })
+
+  root.addEventListener('click', (e) => {
+    const formEl = root.querySelector('#create-match-form')
+    if (!formEl) return
+    const target = e.target as HTMLElement
+    if (target.classList.contains('edit-match-remove')) {
+      const row = target.closest('.edit-match-row')
+      row?.remove()
+      refreshEditMatchNav(formEl)
+      updateCreateMatchDropdowns(formEl)
+      return
+    }
+    if (target.classList.contains('edit-match-add-winner') || target.classList.contains('edit-match-add-loser')) {
+      const team = target.classList.contains('edit-match-add-winner') ? 'winner' : 'loser'
+      const select = (team === 'winner' ? formEl.querySelector('.edit-match-select-winner') : formEl.querySelector('.edit-match-select-loser')) as HTMLSelectElement
+      const playerId = select?.value
+      if (!playerId) return
+      const nameById = new Map(players.map((p) => [p.id, p.name]))
+      const name = nameById.get(playerId) ?? playerId
+      const container = team === 'winner' ? formEl.querySelector('.edit-match-winner-rows') : formEl.querySelector('.edit-match-loser-rows')
+      const rowHtml = buildEditMatchPlayerRow(playerId, name, team, '', 0, 0, 0, 'create-match-champ-list')
+      container?.insertAdjacentHTML('beforeend', rowHtml)
+      refreshEditMatchNav(formEl)
+      updateCreateMatchDropdowns(formEl)
+    }
+  })
+
+  root.querySelector('.create-match-submit')!.addEventListener('click', async () => {
+    const formEl = root.querySelector('#create-match-form')
+    if (!formEl) return
+    const winnerIds: string[] = []
+    const loserIds: string[] = []
+    const picks: ChampionPick[] = []
+    const kda: KdaEntry[] = []
+    const imageUrlInput = formEl.querySelector('.edit-match-image-url') as HTMLInputElement
+    const imageUrl = imageUrlInput?.value?.trim() ?? ''
+    const dateInput = formEl.querySelector('.create-match-date') as HTMLInputElement
+    const dateStr = dateInput?.value?.trim() ?? ''
+    formEl.querySelectorAll('.edit-match-row[data-player-id][data-team]').forEach((row) => {
+      const playerId = row.getAttribute('data-player-id') ?? ''
+      const team = row.getAttribute('data-team') as 'winner' | 'loser'
+      if (!playerId) return
+      const champInput = row.querySelector('.edit-match-champ') as HTMLInputElement
+      const champRaw = champInput?.value?.trim() ?? ''
+      const champ = champRaw ? getCanonicalChampionName(champRaw) : ''
+      const k = parseInt((row.querySelector('.edit-match-k') as HTMLInputElement)?.value ?? '0', 10) || 0
+      const d = parseInt((row.querySelector('.edit-match-d') as HTMLInputElement)?.value ?? '0', 10) || 0
+      const a = parseInt((row.querySelector('.edit-match-a') as HTMLInputElement)?.value ?? '0', 10) || 0
+      if (team === 'winner') winnerIds.push(playerId)
+      else loserIds.push(playerId)
+      picks.push({ playerId, champion: champ })
+      kda.push({ playerId, kills: k, deaths: d, assists: a })
+    })
+    if (winnerIds.length === 0 || loserIds.length === 0) {
+      alert('Adicione pelo menos um jogador em cada time (vencedores e perdedores).')
+      return
+    }
+    const match = addMatch(winnerIds, loserIds, picks, kda, imageUrl, dateStr || undefined)
+    if (match) {
+      const result = await saveRankingToServer({ players, matches })
+      if (!result.ok) console.warn('Salvo localmente. Servidor falhou:', result.error)
+      root.classList.remove('open')
+    }
+  })
+  return root
+}
+
+function updateCreateMatchDropdowns(formEl: Element): void {
+  const inForm = getEditMatchFormPlayerIds(formEl)
+  const optionsHtml = players.filter((p) => !inForm.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
+  const selW = formEl.querySelector('.edit-match-select-winner') as HTMLSelectElement
+  const selL = formEl.querySelector('.edit-match-select-loser') as HTMLSelectElement
+  if (selW) { selW.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selW.value = '' }
+  if (selL) { selL.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selL.value = '' }
+}
+
+function showCreateMatchModal() {
+  const root = document.getElementById('create-match-modal')
+  const formEl = root?.querySelector('#create-match-form')
+  if (!root || !formEl) return
+  const today = new Date()
+  const dateDefault = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const championNames = getChampionList()
+  const datalistOptions = championNames.map((ch) => `<option value="${escapeHtml(ch)}">`).join('')
+  const allOptions = players.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
+  formEl.innerHTML = `
+    <div class="edit-match-top mb-3 flex flex-wrap items-end gap-4">
+      <label class="flex flex-col gap-1">
+        <span class="text-slate-500 text-sm">Data da partida</span>
+        <input type="date" class="create-match-date rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(dateDefault)}" />
+      </label>
+      <label class="flex flex-col gap-1 max-w-md flex-1">
+        <span class="text-slate-500 text-sm">URL da imagem / print (opcional)</span>
+        <input type="url" class="edit-match-image-url rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" placeholder="https://... ou data:image/..." />
+      </label>
+    </div>
+    <datalist id="create-match-champ-list">${datalistOptions}</datalist>
+    <div class="edit-match-body">
+      <nav class="edit-match-nav" aria-label="Jogadores da partida">
+        <div class="edit-match-nav-list"></div>
+      </nav>
+      <div class="edit-match-main">
+        <div class="edit-match-col edit-match-col-winners">
+          <h3 class="edit-match-col-title edit-match-col-title--winner">Time vencedor</h3>
+          <div class="edit-match-winner-rows"></div>
+          <div class="edit-match-add-area">
+            <select class="edit-match-select-winner rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
+              <option value="">— Escolher jogador —</option>
+              ${allOptions}
+            </select>
+            <button type="button" class="edit-match-add-winner rounded-lg px-3 py-1.5 text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white">Adicionar</button>
+          </div>
+        </div>
+        <div class="edit-match-col edit-match-col-losers">
+          <h3 class="edit-match-col-title edit-match-col-title--loser">Time perdedor</h3>
+          <div class="edit-match-loser-rows"></div>
+          <div class="edit-match-add-area">
+            <select class="edit-match-select-loser rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
+              <option value="">— Escolher jogador —</option>
+              ${allOptions}
             </select>
             <button type="button" class="edit-match-add-loser rounded-lg px-3 py-1.5 text-sm font-medium bg-red-900/60 hover:bg-red-800 text-white">Adicionar</button>
           </div>

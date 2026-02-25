@@ -8,6 +8,7 @@ import type { Player, Match, PlayerStats } from './types'
 const PLAYERS_KEY = 'aram-ranked-2-players'
 const MATCHES_KEY = 'aram-ranked-2-matches'
 const SEASON_KEY = 'aram-ranked-2-season'
+const DELETED_MATCH_IDS_KEY = 'aram-ranked-2-deleted-match-ids'
 
 /** Partidas #22 em diante (#22 a #34) não contam para o ranking. Consideradas: 1 a 21. Mantidas no histórico com tag "Não considerado". */
 const EXCLUDED_MATCH_NUMBERS = new Set(
@@ -117,6 +118,22 @@ export function saveMatches(matches: Match[]): void {
   localStorage.setItem(MATCHES_KEY, JSON.stringify(matches))
 }
 
+/** IDs de partidas que o usuário removeu aqui; mantidos para que, após F5, continuem fora mesmo se o servidor ainda as devolver. */
+export function loadDeletedMatchIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_MATCH_IDS_KEY)
+    if (raw) {
+      const list = JSON.parse(raw) as string[]
+      return Array.isArray(list) ? list : []
+    }
+  } catch {}
+  return []
+}
+
+export function saveDeletedMatchIds(ids: string[]): void {
+  localStorage.setItem(DELETED_MATCH_IDS_KEY, JSON.stringify(ids))
+}
+
 export function loadSeason(): string {
   return localStorage.getItem(SEASON_KEY) ?? 'Temporada 1'
 }
@@ -125,7 +142,7 @@ export function saveSeason(label: string): void {
   localStorage.setItem(SEASON_KEY, label)
 }
 
-/** Mescla arquivo com localStorage. Preserva excludeFromStats. */
+/** Mescla arquivo com localStorage. Preserva excludeFromStats. Partidas só no localStorage (ex.: criadas manualmente) são mantidas. */
 export function mergeRankingData(
   file: RankingData | null,
   localPlayers: Player[],
@@ -135,15 +152,17 @@ export function mergeRankingData(
   const fileMatches = (file?.matches ?? []).map(normalizeMatch)
   const idsFromFile = new Set(filePlayers.map((p) => p.id))
   const localById = new Map(localMatches.map((m) => [m.id, m]))
+  const fileMatchIds = new Set(fileMatches.map((m) => m.id))
 
   const players: Player[] = []
   filePlayers.forEach((p) => { if (!REMOVED_PLAYER_NAMES.has(p.name.trim())) players.push(p) })
   localPlayers.forEach((p) => { if (!idsFromFile.has(p.id) && !REMOVED_PLAYER_NAMES.has(p.name.trim())) players.push(p) })
 
-  const matchesToUse = fileMatches.length > 0 ? fileMatches : localMatches.map(normalizeMatch)
-  const merged: Match[] = matchesToUse.map((m) => {
+  /* União: partidas do arquivo + partidas que existem só no localStorage (ex.: criadas manualmente). */
+  const localOnly = localMatches.filter((m) => !fileMatchIds.has(m.id)).map(normalizeMatch)
+  const allMatches = [...fileMatches, ...localOnly]
+  const merged: Match[] = allMatches.map((m) => {
     const num = matchNumberFromId(m.id)
-    /* Para partidas com número (ex.: m-print-20), sempre usar a regra: 1–20 consideradas, 21–34 não. Não usar valor do localStorage. */
     const excludeFromStats = num !== null
       ? EXCLUDED_MATCH_NUMBERS.has(num)
       : (localById.get(m.id)?.excludeFromStats ?? m.excludeFromStats)
@@ -154,7 +173,10 @@ export function mergeRankingData(
     const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
     return db - da
   })
-  return { players, matches: merged }
+  /* Esconde partidas que o usuário removeu aqui, mesmo que o servidor ainda as devolva (ex.: após F5 com save falho). */
+  const deletedIds = new Set(loadDeletedMatchIds())
+  const filtered = merged.filter((m) => !deletedIds.has(m.id))
+  return { players, matches: filtered }
 }
 
 const ELO_LADDER: { label: string; tier: string }[] = [

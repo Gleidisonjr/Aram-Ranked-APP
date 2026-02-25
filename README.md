@@ -1,10 +1,19 @@
-# Aram Ranked APP
+# ARAM Ranked APP
 
 > Última atualização: fev 2026
 
 [![GitHub](https://img.shields.io/badge/GitHub-Gleidisonjr%2FAram--Ranked--APP-181717?logo=github)](https://github.com/Gleidisonjr/Aram-Ranked-APP)
 
-Aplicativo web para ranking de partidas **ARAM** (League of Legends) entre amigos. Acompanhe vitórias, derrotas, ELO, KDA, campeões mais jogados, sorteio de times e conquistas. Pronto para publicar no **GitHub Pages** e compartilhar o link no Discord ou no grupo.
+Aplicativo web para ranking de partidas **ARAM** (League of Legends) entre amigos.
+
+Este repositório contém **duas versões**:
+
+| Versão | Descrição |
+|--------|-----------|
+| **ARAM Ranked 1** | Versão completa (KDA, campeões, destaques, conquistas). Código em `aram-ranked-v1/` e em `src/*-cabare-v1.ts`. |
+| **ARAM Ranked 2** | Versão simplificada (esta raiz): ranking, sortear times, histórico, comparar jogadores, gráficos. Sem KDA/campeões no fluxo. |
+
+→ Ver **[documentation/README.md](./documentation/README.md)** para detalhes das duas versões e como rodar cada uma.
 
 ---
 
@@ -131,21 +140,26 @@ Guarde esse link para uso pessoal; para o Discord e para os amigos use o link se
 
 ```
 Aram-Ranked-APP/
+├── aram-ranked-v1/           # ARAM Ranked 1 — versão completa (ver README dentro da pasta)
+├── documentation/            # Documentação das duas versões (README.md)
 ├── .github/workflows/
-│   └── deploy-pages.yml    # Deploy automático no GitHub Pages
+│   └── deploy-pages.yml     # Deploy automático no GitHub Pages
 ├── public/
-│   └── ranking.json       # Dados do ranking (jogadores + partidas)
+│   └── ranking.json         # Dados do ranking (jogadores + partidas)
 ├── src/
-│   ├── main.ts            # UI e lógica da aplicação
-│   ├── store.ts           # Dados, ranking, conquistas
-│   ├── types.ts           # Tipos TypeScript
-│   ├── ddragon.ts         # Ícones de campeões e emblemas de patente
-│   └── style.css          # Estilos + Tailwind
+│   ├── main.ts              # ARAM Ranked 2 — UI e lógica (versão simplificada)
+│   ├── store.ts             # Dados, ranking (v2)
+│   ├── types.ts             # Tipos TypeScript (v2)
+│   ├── main-cabare-v1.ts    # Backup: ARAM Ranked 1 — entrada completa
+│   ├── store-cabare-v1.ts   # Backup: store v1
+│   ├── types-cabare-v1.ts   # Backup: types v1
+│   ├── ddragon.ts           # Ícones de campeões e emblemas de patente
+│   └── style.css            # Estilos + Tailwind
 ├── docs/
-│   └── ICONS-LOL.md       # Referência de ícones (Data Dragon, Community Dragon)
-├── COMO-PUBLICAR.md       # Guia de publicação
-├── COMO-USAR-PRINT.md     # Uso de prints de partida
-├── IDEIAS-FEATURES.md     # Ideias de features
+│   └── ICONS-LOL.md         # Referência de ícones (Data Dragon, Community Dragon)
+├── COMO-PUBLICAR.md         # Guia de publicação
+├── COMO-USAR-PRINT.md       # Uso de prints de partida
+├── IDEIAS-FEATURES.md       # Ideias de features
 ├── index.html
 ├── package.json
 ├── tsconfig.json

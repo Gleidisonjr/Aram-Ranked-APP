@@ -431,7 +431,7 @@ body {
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.ranking-table th:first-child { width: 2.5rem; min-width: 2.5rem; }
+.ranking-table th:first-child { width: 2rem; min-width: 2rem; }
 .ranking-table th:nth-child(2) { width: 24%; min-width: 9rem; }   /* Jogador */
 .ranking-table th:nth-child(3) { width: 11%; min-width: 5.5rem; } /* ELO */
 .ranking-table th:nth-child(4) { width: 5%; min-width: 3.5rem; }  /* V/D */
@@ -450,9 +450,20 @@ body {
 .ranking-table tbody tr:last-child td { border-bottom: none; }
 .ranking-table tbody tr:hover td { background: var(--bg-card-hover); }
 
+.ranking-table th:first-child,
+.ranking-table .rank-num-cell {
+  width: 2rem;
+  min-width: 2rem;
+  max-width: 2rem;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  box-sizing: border-box;
+  text-align: center;
+}
+.ranking-table .rank-num-cell .rank-num { display: inline-block; }
 .ranking-table .rank-num {
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: center;
@@ -474,7 +485,7 @@ body {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  margin-left: 0.85rem; /* centraliza o emblema entre o número da posição e o nome */
+  margin-left: 0.35rem;
 }
 .ranking-table .name .name-inner {
   display: inline-flex;
@@ -981,6 +992,9 @@ body {
   color: var(--accent);
   min-width: 2.5rem;
   font-size: 0.9rem;
+}
+.history-tag-excluded {
+  flex-shrink: 0;
 }
 .history-date {
   color: var(--text-muted);

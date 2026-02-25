@@ -11,9 +11,12 @@ import {
   savePlayers,
   loadMatches,
   saveMatches,
+  loadDeletedMatchIds,
+  saveDeletedMatchIds,
   computeRanking,
   loadFromFile,
   mergeRankingData,
+  saveRankingToServer,
   loadSeason,
   getEloByStep,
   computePlayerEvolution,
@@ -82,7 +85,24 @@ function getTodayInBrazil(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: BR_TIMEZONE })
 }
 
-function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtDate?: string): void {
+async function persistRankingToServer(): Promise<void> {
+  const result = await saveRankingToServer({ players, matches })
+  if (!result.ok) {
+    const el = document.getElementById('save-error-toast') || (() => {
+      const div = document.createElement('div')
+      div.id = 'save-error-toast'
+      div.className = 'save-error-toast'
+      div.setAttribute('role', 'alert')
+      document.body.appendChild(div)
+      return div
+    })()
+    el.textContent = `Falha ao salvar no servidor: ${result.error ?? 'erro desconhecido'}. Seus dados estão salvos localmente.`
+    el.classList.add('show')
+    setTimeout(() => el.classList.remove('show'), 6000)
+  }
+}
+
+function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtDate?: string, options?: { skipRerender?: boolean }): void {
   const createdAt = createdAtDate?.trim()
     ? (() => {
         const [y, m, d] = createdAtDate.slice(0, 10).split('-').map(Number)
@@ -98,6 +118,28 @@ function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtD
   }
   matches = [match, ...matches]
   saveMatches(matches)
+  savePlayers(players)
+  persistRankingToServer()
+  if (!options?.skipRerender) rerender()
+}
+
+function deleteMatch(matchId: string): void {
+  if (!confirm('Remover esta partida do histórico? Ela deixará de contar para o ranking.')) return
+  matches = matches.filter((m) => m.id !== matchId)
+  saveMatches(matches)
+  const deletedIds = [...new Set([...loadDeletedMatchIds(), matchId])]
+  saveDeletedMatchIds(deletedIds)
+  persistRankingToServer()
+  rerender()
+}
+
+function invertMatch(matchId: string): void {
+  const match = matches.find((m) => m.id === matchId)
+  if (!match) return
+  if (!confirm('Inverter resultado? O time vencedor passará a perdedor e o perdedor a vencedor.')) return
+  ;[match.winnerIds, match.loserIds] = [match.loserIds, match.winnerIds]
+  saveMatches(matches)
+  persistRankingToServer()
   rerender()
 }
 
@@ -203,10 +245,6 @@ function createRankingSection(ranking: PlayerStats[]) {
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <div class="ranking-add-player mt-4 flex flex-wrap gap-2 items-center">
-        <input type="text" class="add-player-input rounded-lg px-3 py-2 bg-slate-800 border border-slate-600 text-white text-sm w-48" placeholder="Nome do jogador" />
-        <button type="button" class="btn btn-secondary btn-sm add-player-btn">Adicionar jogador</button>
-      </div>
       <div class="ranking-cards" aria-label="Ranking em cards para celular" role="list"></div>
     </div>
   `
@@ -217,14 +255,6 @@ function createRankingSection(ranking: PlayerStats[]) {
       const id = tr?.getAttribute('data-player-id')
       if (id) showProfileModal(id, ranking)
     })
-  })
-  const addWrap = section.querySelector('.ranking-add-player')
-  addWrap?.querySelector('.add-player-btn')?.addEventListener('click', () => {
-    const input = addWrap.querySelector<HTMLInputElement>('.add-player-input')
-    if (input?.value.trim()) { addPlayer(input.value.trim()); input.value = '' }
-  })
-  addWrap?.querySelector('.add-player-input')?.addEventListener('keydown', (e) => {
-    if ((e as KeyboardEvent).key === 'Enter') (addWrap.querySelector('.add-player-btn') as HTMLButtonElement)?.click()
   })
   const cardsContainer = section.querySelector('.ranking-cards')
   if (cardsContainer) {
@@ -263,6 +293,106 @@ function createRankingSection(ranking: PlayerStats[]) {
   return section
 }
 
+/** Jogadores na ordem do ranking (mais partidas / melhor posição primeiro). */
+function playersInRankingOrder(ranking: PlayerStats[]): Player[] {
+  const order = new Map(ranking.map((s, i) => [s.player.id, i]))
+  return [...players].sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+}
+
+function sortearPillContent(p: Player, ranking: PlayerStats[], options: { showRemoveButton?: boolean } = {}): string {
+  const stats = ranking.find((s) => s.player.id === p.id)
+  const pos = stats ? ranking.indexOf(stats) + 1 : 0
+  const total = ranking.length
+  const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Líder">Líder</span>' : ''
+  const viceTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+  const lanternTag = pos === total && total > 0 ? ' <span class="player-badge-lantern" title="Lanterna">Lanterna</span>' : ''
+  const tier = stats?.patenteTier ?? 'iron'
+  const emblemUrl = getRankEmblemUrl(tier)
+  const emblemHtml = emblemUrl
+    ? `<img class="sortear-pill-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="20" height="20" />`
+    : ''
+  const namePart = `${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}${leaderTag}${viceTag}${lanternTag}`
+  const removeBtn = options.showRemoveButton ? '<button type="button" class="sortear-bag-remove" aria-label="Remover do sorteio">×</button>' : ''
+  return `${emblemHtml}<span class="sortear-pill-name">${namePart}</span>${removeBtn}`
+}
+
+function refreshSortearPool(section: Element, ranking: PlayerStats[]): void {
+  const pool = section.querySelector('.sortear-pool')
+  const bag = section.querySelector('.sortear-bag')
+  if (!pool || !bag) return
+  const inBag = new Set(Array.from(bag.querySelectorAll('.sortear-bag-pill')).map((el) => el.getAttribute('data-player-id')).filter(Boolean) as string[])
+  const ordered = playersInRankingOrder(ranking)
+  const toShow = ordered.filter((p) => !inBag.has(p.id))
+  pool.innerHTML = toShow
+    .map(
+      (p) =>
+        `<span class="sortear-pill" draggable="true" data-player-id="${escapeHtml(p.id)}" data-player-name="${escapeHtml(p.name)}" role="button" tabindex="0">${sortearPillContent(p, ranking)}</span>`
+    )
+    .join('')
+  pool.querySelectorAll('.sortear-pill').forEach((pill) => {
+    pill.setAttribute('draggable', 'true')
+    pill.addEventListener('dragstart', (e) => {
+      const ev = e as DragEvent
+      pill.classList.add('dragging')
+      ev.dataTransfer?.setData('application/json', JSON.stringify({ playerId: (pill as HTMLElement).dataset.playerId, playerName: (pill as HTMLElement).dataset.playerName }))
+      ev.dataTransfer!.effectAllowed = 'move'
+    })
+    pill.addEventListener('dragend', () => pill.classList.remove('dragging'))
+    ;(pill as HTMLElement).addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
+        e.preventDefault()
+        const bagEl = section.querySelector('.sortear-bag')
+        if (bagEl) {
+          const playerId = (pill as HTMLElement).dataset.playerId
+          const playerName = (pill as HTMLElement).dataset.playerName
+          const p = players.find((x) => x.id === playerId)
+          if (p && playerId && playerName) addPlayerPillToBag(section, bagEl, p, ranking)
+          refreshSortearPool(section, ranking)
+        }
+      }
+    })
+  })
+}
+
+function addPlayerPillToBag(section: Element, bag: Element, p: Player, ranking: PlayerStats[]): void {
+  const pill = document.createElement('span')
+  pill.className = 'sortear-bag-pill'
+  pill.setAttribute('data-player-id', p.id)
+  pill.innerHTML = sortearPillContent(p, ranking, { showRemoveButton: true })
+  bag.appendChild(pill)
+  pill.querySelector('.sortear-bag-remove')?.addEventListener('click', () => {
+    pill.remove()
+    refreshSortearPool(section, computeRanking(players, matches))
+  })
+}
+
+function setupSortearBagDrop(section: Element, ranking: PlayerStats[]): void {
+  const bag = section.querySelector('.sortear-bag')
+  if (!bag) return
+  bag.addEventListener('dragover', (e) => {
+    e.preventDefault()
+    ;(e as DragEvent).dataTransfer!.dropEffect = 'move'
+    bag.classList.add('drag-over')
+  })
+  bag.addEventListener('dragleave', () => bag.classList.remove('drag-over'))
+  bag.addEventListener('drop', (e) => {
+    e.preventDefault()
+    bag.classList.remove('drag-over')
+    const ev = e as DragEvent
+    const json = ev.dataTransfer?.getData('application/json')
+    if (!json) return
+    try {
+      const { playerId } = JSON.parse(json) as { playerId: string; playerName: string }
+      const p = players.find((x) => x.id === playerId)
+      if (!p) return
+      addPlayerPillToBag(section, bag, p, ranking)
+      refreshSortearPool(section, ranking)
+    } catch {
+      // ignore
+    }
+  })
+}
+
 function createSortearSection(ranking: PlayerStats[]) {
   const section = document.createElement('section')
   section.className = 'card sortear-section'
@@ -273,28 +403,48 @@ function createSortearSection(ranking: PlayerStats[]) {
     <div class="sortear-section-overlay"></div>
     <div class="sortear-section-inner">
       <h2>Sortear times</h2>
-      <p class="sortear-hint text-slate-400 text-sm mb-5">Marque pelo menos 2 jogadores e clique em Sortear. Depois escolha quem ganhou.</p>
-      <div class="sortear-checkboxes flex flex-wrap gap-2 mb-5">
-        ${players.map((p) => `
-          <label class="checkbox-label inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-700/40 px-3 py-2 text-sm text-slate-200 cursor-pointer hover:bg-slate-600/50 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-500/15">
-            <input type="checkbox" class="sortear-player-cb" data-player-id="${escapeHtml(p.id)}" />
-            <span>${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}</span>
-          </label>
-        `).join('')}
+      <div class="sortear-add-player mb-4 flex flex-wrap gap-2 items-center">
+        <input type="text" class="add-player-input rounded-lg px-3 py-2 bg-slate-800 border border-slate-600 text-white text-sm w-48" placeholder="Nome do jogador" />
+        <button type="button" class="btn btn-secondary btn-sm add-player-btn">Adicionar jogador</button>
+      </div>
+      <p class="sortear-hint text-slate-400 text-sm mb-2">Arraste os jogadores para o baú para incluí-los no sorteio (mín. 6).</p>
+      <div class="sortear-pool-wrap mb-3">
+        <p class="text-slate-500 text-xs mb-1.5">Jogadores</p>
+        <div class="sortear-pool"></div>
+      </div>
+      <div class="sortear-bag-wrap mb-4">
+        <p class="text-slate-500 text-xs mb-1.5">No sorteio</p>
+        <div class="sortear-bag" role="region" aria-label="Baú do sorteio"></div>
       </div>
       <button type="button" class="btn btn-primary sortear-btn">Sortear times</button>
       <div class="sortear-result mt-5 min-h-[2rem]" aria-live="polite"></div>
     </div>
   `
+  const inner = section.querySelector('.sortear-section-inner')
+  refreshSortearPool(section, ranking)
+  setupSortearBagDrop(section, ranking)
+
+  const addWrap = section.querySelector('.sortear-add-player')
+  addWrap?.querySelector('.add-player-btn')?.addEventListener('click', () => {
+    const input = addWrap.querySelector<HTMLInputElement>('.add-player-input')
+    if (input?.value.trim()) {
+      addPlayer(input.value.trim())
+      input.value = ''
+    }
+  })
+  addWrap?.querySelector('.add-player-input')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') (addWrap.querySelector('.add-player-btn') as HTMLButtonElement)?.click()
+  })
+
   const resultEl = section.querySelector('.sortear-result')!
   const sortearBtn = section.querySelector('.sortear-btn')
   sortearBtn?.addEventListener('click', () => {
-    const checked = section.querySelectorAll<HTMLInputElement>('.sortear-player-cb:checked')
-    const selectedPlayers = Array.from(checked)
-      .map((cb) => players.find((p) => p.id === cb.dataset.playerId))
+    const bagPills = section.querySelectorAll('.sortear-bag .sortear-bag-pill')
+    const selectedPlayers = Array.from(bagPills)
+      .map((el) => players.find((p) => p.id === el.getAttribute('data-player-id')))
       .filter((p): p is Player => !!p)
-    if (selectedPlayers.length < 2) {
-      resultEl.innerHTML = '<p class="sortear-error m-0 text-red-400 text-sm font-medium">Selecione pelo menos 2 jogadores.</p>'
+    if (selectedPlayers.length < 6) {
+      resultEl.innerHTML = '<p class="sortear-error m-0 text-red-400 text-sm font-medium">Coloque pelo menos 6 jogadores no baú do sorteio.</p>'
       return
     }
     const shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5)
@@ -302,13 +452,21 @@ function createSortearSection(ranking: PlayerStats[]) {
     const team1 = shuffled.slice(0, mid)
     const team2 = shuffled.slice(mid)
     const statsById = new Map(ranking.map((s) => [s.player.id, s]))
-    const eloBadgeHtml = (playerId: string) => {
-      const s = statsById.get(playerId)
-      const patente = s?.patente ?? '—'
-      const tierClass = s?.patenteTier ? ` patente-${s.patenteTier}` : ' patente-none'
-      return `<span class="sortear-elo patente-badge${tierClass} text-xs shrink-0">${escapeHtml(patente)}</span>`
+    const totalRank = ranking.length
+    const sortearResultPlayerRow = (p: Player) => {
+      const s = statsById.get(p.id)
+      const pos = ranking.findIndex((x) => x.player.id === p.id) + 1
+      const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Líder">Líder</span>' : ''
+      const viceTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+      const lanternTag = pos === totalRank && totalRank > 0 ? ' <span class="player-badge-lantern" title="Lanterna">Lanterna</span>' : ''
+      const tier = s?.patenteTier ?? 'iron'
+      const emblemUrl = getRankEmblemUrl(tier)
+      const emblemHtml = emblemUrl ? `<img class="sortear-result-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="22" height="22" />` : ''
+      const namePart = `${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}${leaderTag}${viceTag}${lanternTag}`
+      const lastFive = (s?.lastResults ?? []).slice(0, 5).map((r) => `<span class="result-dot ${r === 'W' ? 'win' : 'loss'}" title="${r === 'W' ? 'Vitória' : 'Derrota'}">${r === 'W' ? 'V' : 'D'}</span>`).join('')
+      const lastGamesHtml = lastFive ? `<span class="sortear-result-last-wrap">Últimos: <span class="sortear-result-last-dots">${lastFive}</span></span>` : ''
+      return `<span class="min-w-0 flex flex-col gap-0.5"><span class="flex items-center gap-2">${emblemHtml}<span>${namePart}</span></span>${lastGamesHtml}</span>`
     }
-    const playerRowHtml = (p: Player) => `${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}`
     playSound('sortear-start')
     setTimeout(() => {
       playSound('sortear-done')
@@ -316,39 +474,108 @@ function createSortearSection(ranking: PlayerStats[]) {
         <div class="sortear-result-header mb-4 pb-3 border-b border-slate-600">
           <p class="m-0 text-slate-400 text-sm font-medium">Resultado do sorteio</p>
         </div>
-        <div class="sortear-teams flex flex-wrap items-stretch gap-5 mb-5">
-          <div class="sortear-team flex-1 min-w-[180px] rounded-2xl border-2 border-amber-500/30 bg-gradient-to-b from-slate-800/80 to-slate-800/40 p-5 shadow-lg ring-1 ring-slate-700/50">
-            <h4 class="m-0 mb-4 text-sm font-bold uppercase tracking-widest text-amber-400/90">Equipe 1</h4>
-            <ul class="m-0 p-0 list-none space-y-2.5">${team1.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5"><span class="min-w-0">${playerRowHtml(p)}</span>${eloBadgeHtml(p.id)}</li>`).join('')}</ul>
+        <div class="sortear-teams flex flex-wrap items-stretch gap-5 mb-4">
+          <div class="sortear-team sortear-team--1 flex-1 min-w-[180px] rounded-2xl border-2 border-sky-500/40 bg-gradient-to-b from-slate-800/90 to-slate-800/50 p-5 shadow-lg ring-1 ring-slate-700/50">
+            <h4 class="m-0 mb-4 text-sm font-bold uppercase tracking-widest text-sky-400/90">Equipe 1</h4>
+            <ul class="m-0 p-0 list-none space-y-2.5">${team1.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5">${sortearResultPlayerRow(p)}</li>`).join('')}</ul>
+            <div class="mt-4 pt-4 border-t border-slate-600/50">
+              <button type="button" class="sortear-win-1 btn w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white">Equipe 1 venceu</button>
+            </div>
           </div>
-          <div class="sortear-vs flex items-center justify-center shrink-0 w-14 text-3xl font-black text-amber-400 drop-shadow-sm">vs</div>
-          <div class="sortear-team flex-1 min-w-[180px] rounded-2xl border-2 border-amber-500/30 bg-gradient-to-b from-slate-800/80 to-slate-800/40 p-5 shadow-lg ring-1 ring-slate-700/50">
+          <div class="sortear-vs flex items-center justify-center shrink-0 w-14 text-3xl font-black text-slate-400 drop-shadow-sm">vs</div>
+          <div class="sortear-team sortear-team--2 flex-1 min-w-[180px] rounded-2xl border-2 border-amber-500/40 bg-gradient-to-b from-slate-800/90 to-slate-800/50 p-5 shadow-lg ring-1 ring-slate-700/50">
             <h4 class="m-0 mb-4 text-sm font-bold uppercase tracking-widest text-amber-400/90">Equipe 2</h4>
-            <ul class="m-0 p-0 list-none space-y-2.5">${team2.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5"><span class="min-w-0">${playerRowHtml(p)}</span>${eloBadgeHtml(p.id)}</li>`).join('')}</ul>
+            <ul class="m-0 p-0 list-none space-y-2.5">${team2.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5">${sortearResultPlayerRow(p)}</li>`).join('')}</ul>
+            <div class="mt-4 pt-4 border-t border-slate-600/50">
+              <button type="button" class="sortear-win-2 btn w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-slate-900">Equipe 2 venceu</button>
+            </div>
           </div>
         </div>
-        <div class="flex flex-wrap gap-3">
-          <button type="button" class="sortear-win-1 btn rounded-xl px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white">Equipe 1 venceu</button>
-          <button type="button" class="sortear-win-2 btn rounded-xl px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white">Equipe 2 venceu</button>
+        <div class="flex flex-wrap justify-center gap-3">
+          <button type="button" class="sortear-invert-teams btn rounded-xl px-5 py-2.5 text-sm font-semibold bg-amber-600/80 hover:bg-amber-500/80 text-slate-900">⇅ Inverter times</button>
           <button type="button" class="sortear-again btn rounded-xl px-5 py-2.5 text-sm font-semibold bg-slate-600 hover:bg-slate-500 text-white">Sortear de novo</button>
         </div>
       `
       const resultDiv = resultEl as HTMLElement
       resultDiv.dataset.team1Ids = team1.map((p) => p.id).join(',')
       resultDiv.dataset.team2Ids = team2.map((p) => p.id).join(',')
-      resultEl.querySelector('.sortear-win-1')?.addEventListener('click', () => {
-        const t1 = (resultDiv.dataset.team1Ids ?? '').split(',').filter(Boolean)
-        const t2 = (resultDiv.dataset.team2Ids ?? '').split(',').filter(Boolean)
-        if (t1.length && t2.length) { addMatchFromSortear(t1, t2); resultDiv.innerHTML = '' }
-      })
-      resultEl.querySelector('.sortear-win-2')?.addEventListener('click', () => {
-        const t1 = (resultDiv.dataset.team1Ids ?? '').split(',').filter(Boolean)
-        const t2 = (resultDiv.dataset.team2Ids ?? '').split(',').filter(Boolean)
-        if (t1.length && t2.length) { addMatchFromSortear(t2, t1); resultDiv.innerHTML = '' }
+
+      function attachSortearWinHandlers(): void {
+        resultEl.querySelector('.sortear-win-1')?.addEventListener('click', () => {
+          const t1 = (resultDiv.dataset.team1Ids ?? '').split(',').filter(Boolean)
+          const t2 = (resultDiv.dataset.team2Ids ?? '').split(',').filter(Boolean)
+          if (t1.length && t2.length && confirm('Confirmar resultado? Equipe 1 venceu. A partida será registrada.')) {
+            addMatchFromSortear(t1, t2)
+            resultDiv.innerHTML = ''
+          }
+        })
+        resultEl.querySelector('.sortear-win-2')?.addEventListener('click', () => {
+          const t1 = (resultDiv.dataset.team1Ids ?? '').split(',').filter(Boolean)
+          const t2 = (resultDiv.dataset.team2Ids ?? '').split(',').filter(Boolean)
+          if (t1.length && t2.length && confirm('Confirmar resultado? Equipe 2 venceu. A partida será registrada.')) {
+            addMatchFromSortear(t2, t1)
+            resultDiv.innerHTML = ''
+          }
+        })
+      }
+
+      function refreshSortearResultTeams(): void {
+        const team1Ids = (resultDiv.dataset.team1Ids ?? '').split(',').filter(Boolean)
+        const team2Ids = (resultDiv.dataset.team2Ids ?? '').split(',').filter(Boolean)
+        const t1 = team1Ids.map((id) => players.find((p) => p.id === id)).filter((p): p is Player => !!p)
+        const t2 = team2Ids.map((id) => players.find((p) => p.id === id)).filter((p): p is Player => !!p)
+        const currentRanking = computeRanking(players, matches)
+        const statsById = new Map(currentRanking.map((s) => [s.player.id, s]))
+        const totalRank = currentRanking.length
+        const rowHtml = (p: Player) => {
+          const s = statsById.get(p.id)
+          const pos = currentRanking.findIndex((x) => x.player.id === p.id) + 1
+          const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Líder">Líder</span>' : ''
+          const viceTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+          const lanternTag = pos === totalRank && totalRank > 0 ? ' <span class="player-badge-lantern" title="Lanterna">Lanterna</span>' : ''
+          const tier = s?.patenteTier ?? 'iron'
+          const emblemUrl = getRankEmblemUrl(tier)
+          const emblemHtml = emblemUrl ? `<img class="sortear-result-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="22" height="22" />` : ''
+          const namePart = `${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}${leaderTag}${viceTag}${lanternTag}`
+          const lastFive = (s?.lastResults ?? []).slice(0, 5).map((r) => `<span class="result-dot ${r === 'W' ? 'win' : 'loss'}" title="${r === 'W' ? 'Vitória' : 'Derrota'}">${r === 'W' ? 'V' : 'D'}</span>`).join('')
+          const lastGamesHtml = lastFive ? `<span class="sortear-result-last-wrap">Últimos: <span class="sortear-result-last-dots">${lastFive}</span></span>` : ''
+          return `<span class="min-w-0 flex flex-col gap-0.5"><span class="flex items-center gap-2">${emblemHtml}<span>${namePart}</span></span>${lastGamesHtml}</span>`
+        }
+        const team1Box = resultEl.querySelector('.sortear-team--1')
+        const team2Box = resultEl.querySelector('.sortear-team--2')
+        if (team1Box) {
+          team1Box.innerHTML = `
+            <h4 class="m-0 mb-4 text-sm font-bold uppercase tracking-widest text-sky-400/90">Equipe 1</h4>
+            <ul class="m-0 p-0 list-none space-y-2.5">${t1.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5">${rowHtml(p)}</li>`).join('')}</ul>
+            <div class="mt-4 pt-4 border-t border-slate-600/50">
+              <button type="button" class="sortear-win-1 btn w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white">Equipe 1 venceu</button>
+            </div>
+          `
+        }
+        if (team2Box) {
+          team2Box.innerHTML = `
+            <h4 class="m-0 mb-4 text-sm font-bold uppercase tracking-widest text-amber-400/90">Equipe 2</h4>
+            <ul class="m-0 p-0 list-none space-y-2.5">${t2.map((p) => `<li class="sortear-team-player py-2 px-3 rounded-xl bg-slate-700/50 text-slate-200 text-sm font-medium flex flex-wrap items-center justify-between gap-1.5">${rowHtml(p)}</li>`).join('')}</ul>
+            <div class="mt-4 pt-4 border-t border-slate-600/50">
+              <button type="button" class="sortear-win-2 btn w-full rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-slate-900">Equipe 2 venceu</button>
+            </div>
+          `
+        }
+        attachSortearWinHandlers()
+      }
+
+      attachSortearWinHandlers()
+      resultEl.querySelector('.sortear-invert-teams')?.addEventListener('click', () => {
+        const t1 = resultDiv.dataset.team1Ids ?? ''
+        const t2 = resultDiv.dataset.team2Ids ?? ''
+        resultDiv.dataset.team1Ids = t2
+        resultDiv.dataset.team2Ids = t1
+        refreshSortearResultTeams()
       })
       resultEl.querySelector('.sortear-again')?.addEventListener('click', () => (sortearBtn as HTMLButtonElement).click())
     }, 300)
   })
+
   const createWrap = document.createElement('div')
   createWrap.className = 'sortear-create-manual px-6 pb-6 pt-4 border-t border-slate-600/50'
   createWrap.innerHTML = `
@@ -357,7 +584,7 @@ function createSortearSection(ranking: PlayerStats[]) {
     <button type="button" class="btn btn-primary" id="sortear-section-create-match-btn">Criar partida</button>
   `
   createWrap.querySelector('#sortear-section-create-match-btn')?.addEventListener('click', () => showCreateMatchModal())
-  section.querySelector('.sortear-section-inner')?.appendChild(createWrap)
+  inner?.appendChild(createWrap)
   return section
 }
 
@@ -408,9 +635,19 @@ function createHistorySection() {
             <span class="text-slate-500"> vs </span>
             <span class="history-losers text-red-400/90">${escapeHtml(loserNames)}</span>
           </span>
+          <button type="button" class="history-match-invert" aria-label="Inverter resultado (vencedor e perdedor)" title="Inverter resultado">⇅</button>
+          <button type="button" class="history-match-delete" aria-label="Remover partida do histórico" title="Remover partida">×</button>
         </div>
       `
       list.appendChild(row)
+      row.querySelector('.history-match-invert')?.addEventListener('click', (e) => {
+        e.stopPropagation()
+        invertMatch(m.id)
+      })
+      row.querySelector('.history-match-delete')?.addEventListener('click', (e) => {
+        e.stopPropagation()
+        deleteMatch(m.id)
+      })
     })
   }
   return section
@@ -688,6 +925,7 @@ function createCreateMatchModal(): HTMLElement {
       const row = target.closest('.edit-match-row')
       row?.remove()
       updateCreateMatchDropdowns(formEl)
+      refreshCreateMatchPool(formEl, computeRanking(players, matches))
       return
     }
     if (target.classList.contains('edit-match-add-winner') || target.classList.contains('edit-match-add-loser')) {
@@ -702,9 +940,11 @@ function createCreateMatchModal(): HTMLElement {
       row.className = `edit-match-row edit-match-row--${team}`
       row.setAttribute('data-player-id', playerId)
       row.setAttribute('data-team', team)
-      row.innerHTML = `<span class="edit-match-row-name">${escapeHtml(p.name)}</span><button type="button" class="edit-match-remove" aria-label="Remover">×</button>`
+      const ranking = computeRanking(players, matches)
+      row.innerHTML = `${createMatchPlayerContent(p, ranking)}<button type="button" class="edit-match-remove" aria-label="Remover">×</button>`
       container?.appendChild(row)
       updateCreateMatchDropdowns(formEl)
+      refreshCreateMatchPool(formEl, ranking)
     }
   })
 
@@ -732,16 +972,100 @@ function createCreateMatchModal(): HTMLElement {
   return root
 }
 
-function updateCreateMatchDropdowns(formEl: Element): void {
+function getAssignedPlayerIds(formEl: Element): Set<string> {
   const inForm = new Set<string>()
   formEl.querySelectorAll('.edit-match-row[data-player-id]').forEach((row) => {
     inForm.add(row.getAttribute('data-player-id') ?? '')
   })
+  return inForm
+}
+
+/** Conteúdo do pill/row no modal Criar partida: emblema + nome + tags (Líder, Vice, Lanterna), sem caixa de ELO. */
+function createMatchPlayerContent(p: Player, ranking: PlayerStats[]): string {
+  const stats = ranking.find((s) => s.player.id === p.id)
+  const pos = stats ? ranking.indexOf(stats) + 1 : 0
+  const total = ranking.length
+  const leaderTag = pos === 1 ? ' <span class="player-badge-leader" title="Líder">Líder</span>' : ''
+  const viceTag = pos === 2 ? ' <span class="player-badge-vice-leader" title="Vice-líder">Vice-líder</span>' : ''
+  const lanternTag = pos === total && total > 0 ? ' <span class="player-badge-lantern" title="Lanterna">Lanterna</span>' : ''
+  const tier = stats?.patenteTier ?? 'iron'
+  const emblemUrl = getRankEmblemUrl(tier)
+  const emblemHtml = emblemUrl ? `<img class="create-match-emblem" src="${escapeHtml(emblemUrl)}" alt="" width="20" height="20" />` : ''
+  const namePart = `${escapeHtml(p.name)}${getPlayerBadgeHtml(p)}${leaderTag}${viceTag}${lanternTag}`
+  return `${emblemHtml}<span class="create-match-name">${namePart}</span>`
+}
+
+function updateCreateMatchDropdowns(formEl: Element): void {
+  const inForm = getAssignedPlayerIds(formEl)
   const optionsHtml = players.filter((p) => !inForm.has(p.id)).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
   const selW = formEl.querySelector('.edit-match-select-winner') as HTMLSelectElement
   const selL = formEl.querySelector('.edit-match-select-loser') as HTMLSelectElement
   if (selW) { selW.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selW.value = '' }
   if (selL) { selL.innerHTML = '<option value="">— Escolher jogador —</option>' + optionsHtml; selL.value = '' }
+}
+
+function refreshCreateMatchPool(formEl: Element, ranking: PlayerStats[]): void {
+  const poolEl = formEl.querySelector('#create-match-pool')
+  if (!poolEl) return
+  const assigned = getAssignedPlayerIds(formEl)
+  const order = new Map(ranking.map((s, i) => [s.player.id, i]))
+  const unassigned = players.filter((p) => !assigned.has(p.id)).sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+  poolEl.innerHTML = unassigned
+    .map(
+      (p) =>
+        `<span class="create-match-pill" draggable="true" data-player-id="${escapeHtml(p.id)}" data-player-name="${escapeHtml(p.name)}" role="button" tabindex="0">${createMatchPlayerContent(p, ranking)}</span>`
+    )
+    .join('')
+  poolEl.querySelectorAll('.create-match-pill').forEach((pill) => {
+    pill.addEventListener('dragstart', (e) => {
+      const ev = e as DragEvent
+      ev.dataTransfer?.setData('text/plain', (pill as HTMLElement).dataset.playerId ?? '')
+      ev.dataTransfer?.setData('application/json', JSON.stringify({ playerId: (pill as HTMLElement).dataset.playerId, playerName: (pill as HTMLElement).dataset.playerName }))
+      ev.dataTransfer!.effectAllowed = 'move'
+      pill.classList.add('dragging')
+    })
+    pill.addEventListener('dragend', () => pill.classList.remove('dragging'))
+  })
+}
+
+function setupCreateMatchDropZones(formEl: Element): void {
+  const winnerRows = formEl.querySelector('.edit-match-winner-rows')
+  const loserRows = formEl.querySelector('.edit-match-loser-rows')
+  const setupZone = (zone: Element | null, team: 'winner' | 'loser') => {
+    if (!zone) return
+    zone.classList.add('create-match-drop-zone')
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      ;(e as DragEvent).dataTransfer!.dropEffect = 'move'
+      zone.classList.add('drag-over')
+    })
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'))
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault()
+      zone.classList.remove('drag-over')
+      const ev = e as DragEvent
+      const json = ev.dataTransfer?.getData('application/json')
+      if (!json) return
+      try {
+        const { playerId, playerName } = JSON.parse(json) as { playerId: string; playerName: string }
+        const p = players.find((x) => x.id === playerId)
+        if (!p) return
+        const row = document.createElement('div')
+        row.className = `edit-match-row edit-match-row--${team}`
+        row.setAttribute('data-player-id', playerId)
+        row.setAttribute('data-team', team)
+        const ranking = computeRanking(players, matches)
+        row.innerHTML = `${createMatchPlayerContent(p, ranking)}<button type="button" class="edit-match-remove" aria-label="Remover">×</button>`
+        zone.appendChild(row)
+        updateCreateMatchDropdowns(formEl)
+        refreshCreateMatchPool(formEl, ranking)
+      } catch {
+        // ignore
+      }
+    })
+  }
+  setupZone(winnerRows, 'winner')
+  setupZone(loserRows, 'loser')
 }
 
 function showCreateMatchModal(): void {
@@ -757,11 +1081,15 @@ function showCreateMatchModal(): void {
         <input type="date" class="create-match-date rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" value="${escapeHtml(today)}" />
       </label>
     </div>
+    <div class="create-match-pool-wrap">
+      <p class="text-slate-500 text-sm mb-2">Arraste os jogadores para os times abaixo (ou use os selects)</p>
+      <div class="create-match-pool" id="create-match-pool"></div>
+    </div>
     <div class="edit-match-body">
       <div class="edit-match-main flex flex-wrap gap-6">
         <div class="edit-match-col edit-match-col-winners">
           <h3 class="edit-match-col-title edit-match-col-title--winner">Time vencedor</h3>
-          <div class="edit-match-winner-rows"></div>
+          <div class="edit-match-winner-rows create-match-drop-zone"></div>
           <div class="edit-match-add-area flex flex-wrap items-center gap-2 mt-2">
             <select class="edit-match-select-winner rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
               <option value="">— Escolher jogador —</option>${allOptions}
@@ -771,7 +1099,7 @@ function showCreateMatchModal(): void {
         </div>
         <div class="edit-match-col edit-match-col-losers">
           <h3 class="edit-match-col-title edit-match-col-title--loser">Time perdedor</h3>
-          <div class="edit-match-loser-rows"></div>
+          <div class="edit-match-loser-rows create-match-drop-zone"></div>
           <div class="edit-match-add-area flex flex-wrap items-center gap-2 mt-2">
             <select class="edit-match-select-loser rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white">
               <option value="">— Escolher jogador —</option>${allOptions}
@@ -782,6 +1110,9 @@ function showCreateMatchModal(): void {
       </div>
     </div>
   `
+  const ranking = computeRanking(players, matches)
+  refreshCreateMatchPool(formEl, ranking)
+  setupCreateMatchDropZones(formEl)
   updateCreateMatchDropdowns(formEl)
   root.classList.add('open')
 }

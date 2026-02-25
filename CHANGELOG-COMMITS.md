@@ -102,4 +102,15 @@ Este documento lista cada alteração feita no projeto, para referência e para 
 
 ---
 
-Os commits no repositório foram organizados em blocos lógicos que agrupam os itens acima quando aplicável (ex.: store em 1–2 commits, sortear em vários, etc.).
+## Commits realizados (agrupados)
+
+As alterações foram commitadas em **7 commits** lógicos (para facilitar review e revert pontual):
+
+1. **docs: add CHANGELOG-COMMITS.md** – Este documento (itens 1–22).
+2. **store: add deleted match ids + merge file+local and filter removed matches** – Itens 1–2.
+3. **feat: ranking, sortear, create match, persist, history, invert** – Itens 3–18 (main.ts).
+4. **style: sortear pool/bag/result, create match, history, toast** – Itens 19–22 (style.css).
+5. **chore: exclude src/*-cabare-v1.ts from tsconfig** – Configuração.
+6. **data: update ranking.json** – Dados (opcional).
+
+Para obter 20–30 commits separados (um por item), é possível usar `git rebase -i` e “edit” o commit do `main.ts` (e eventualmente do `style.css`) para dividir em vários commits com `git add -p` e mensagens por item.

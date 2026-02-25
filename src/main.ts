@@ -157,6 +157,11 @@ function createHeader() {
   return h
 }
 
+function isAdminMode(): boolean {
+  if (typeof location === 'undefined') return false
+  return new URLSearchParams(location.search).get('admin') === '1'
+}
+
 function createToolbar() {
   const bar = document.createElement('div')
   bar.className = 'toolbar'
@@ -614,19 +619,20 @@ function createHistorySection() {
             <span class="text-slate-500"> vs </span>
             <span class="history-losers text-red-400/90">${escapeHtml(loserNames)}</span>
           </span>
-          <button type="button" class="history-match-invert" aria-label="Inverter resultado (vencedor e perdedor)" title="Inverter resultado">⇅</button>
-          <button type="button" class="history-match-delete" aria-label="Remover partida do histórico" title="Remover partida">×</button>
+          ${isAdminMode() ? '<button type="button" class="history-match-invert" aria-label="Inverter resultado (vencedor e perdedor)" title="Inverter resultado">⇅</button><button type="button" class="history-match-delete" aria-label="Remover partida do histórico" title="Remover partida">×</button>' : ''}
         </div>
       `
       list.appendChild(row)
-      row.querySelector('.history-match-invert')?.addEventListener('click', (e) => {
-        e.stopPropagation()
-        invertMatch(m.id)
-      })
-      row.querySelector('.history-match-delete')?.addEventListener('click', (e) => {
-        e.stopPropagation()
-        deleteMatch(m.id)
-      })
+      if (isAdminMode()) {
+        row.querySelector('.history-match-invert')?.addEventListener('click', (e) => {
+          e.stopPropagation()
+          invertMatch(m.id)
+        })
+        row.querySelector('.history-match-delete')?.addEventListener('click', (e) => {
+          e.stopPropagation()
+          deleteMatch(m.id)
+        })
+      }
     })
   }
   return section

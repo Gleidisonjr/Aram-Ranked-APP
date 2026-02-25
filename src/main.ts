@@ -1047,7 +1047,7 @@ function setupCreateMatchDropZones(formEl: Element): void {
       const json = ev.dataTransfer?.getData('application/json')
       if (!json) return
       try {
-        const { playerId, playerName } = JSON.parse(json) as { playerId: string; playerName: string }
+        const { playerId } = JSON.parse(json) as { playerId: string; playerName: string }
         const p = players.find((x) => x.id === playerId)
         if (!p) return
         const row = document.createElement('div')

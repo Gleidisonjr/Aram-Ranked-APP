@@ -64,6 +64,8 @@ export interface Match {
   /** URL ou data URL da imagem/print da partida (visível no histórico) */
   imageUrl?: string
   createdAt: string
+  /** Se true, a partida fica visível no histórico mas não conta para vitórias, derrotas, KDA nem streaks (ex.: em observação/manutenção). */
+  excludeFromStats?: boolean
 }
 
 export interface PlayerStats {

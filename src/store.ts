@@ -98,9 +98,9 @@ export async function saveRankingToServer(data: RankingData): Promise<{ ok: bool
   }
 }
 
-/** Carrega ranking do site (ranking.json — no GitHub Pages vem do repositório). Se falhar, retorna null e o app usa cache (localStorage). */
+/** Carrega ranking do site (ranking.json — no GitHub Pages vem do repositório). Tenta até 2x. Se falhar, retorna null e o app usa cache (localStorage). */
 export async function loadFromFile(): Promise<RankingData | null> {
-  try {
+  const tryLoad = async (): Promise<RankingData | null> => {
     const url = `${RANKING_JSON_URL}?t=${Date.now()}`
     const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) {
@@ -110,10 +110,12 @@ export async function loadFromFile(): Promise<RankingData | null> {
     const data = await res.json() as RankingData
     if (Array.isArray(data.players) && Array.isArray(data.matches)) return data
     console.warn('ranking.json: formato inválido (players/matches ausentes)')
-  } catch (e) {
-    console.warn('ranking.json: falha ao carregar', e)
+    return null
   }
-  return null
+  const first = await tryLoad()
+  if (first) return first
+  await new Promise((r) => setTimeout(r, 800))
+  return tryLoad()
 }
 
 export function loadPlayers(): Player[] {
@@ -237,9 +239,10 @@ export function mergeRankingData(
           kda: local.kda ?? m.kda,
           imageUrl: local.imageUrl ?? m.imageUrl,
           matchExtendedStats: local.matchExtendedStats ?? m.matchExtendedStats,
+          excludeFromStats: local.excludeFromStats ?? m.excludeFromStats,
         })
       } else {
-        byId.set(m.id, m)
+        byId.set(m.id, { ...m, excludeFromStats: local?.excludeFromStats ?? m.excludeFromStats })
       }
       return
     }
@@ -260,8 +263,9 @@ export function mergeRankingData(
           kda: useLocalKda ? localKda : fileKda,
           matchExtendedStats: useLocalStats ? localStats : fileStats,
           imageUrl: local?.imageUrl ?? m.imageUrl,
+          excludeFromStats: local?.excludeFromStats ?? m.excludeFromStats,
         }
-      : m
+      : { ...m, excludeFromStats: local?.excludeFromStats ?? m.excludeFromStats }
     byId.set(merged.id, merged)
   })
   // Quando o arquivo tem partidas, usamos SOMENTE as do arquivo (ranking.json é a fonte da verdade).
@@ -272,10 +276,16 @@ export function mergeRankingData(
     })
   }
   const rawMatches: Match[] = [...byId.values()]
-  rawMatches.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+  // Ordem por data: partida mais recente (maior createdAt) primeiro no histórico. Assim 26/02 fica à frente de 04/02.
+  rawMatches.sort((a, b) => {
+    const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    return db - da
+  })
 
   const winsById = new Map<string, number>()
   rawMatches.forEach((m) => {
+    if (m.excludeFromStats) return
     m.winnerIds.forEach((id) => winsById.set(id, (winsById.get(id) ?? 0) + 1))
   })
 
@@ -510,6 +520,7 @@ export function getAllAchievementsByCategory(): Map<string, AchievementDef[]> {
 }
 
 export function computeRanking(players: Player[], matches: Match[]): PlayerStats[] {
+  const countingMatches = matches.filter((m) => !m.excludeFromStats)
   const wins = new Map<string, number>()
   const losses = new Map<string, number>()
   type ChampStats = { count: number; wins: number; kills: number; deaths: number; assists: number; displayChampion?: string; lastMatchCreatedAt?: string }
@@ -523,7 +534,7 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
     kdaAgg.set(p.id, { kills: 0, deaths: 0, assists: 0, games: 0 })
   })
 
-  const matchesChronological = [...matches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  const matchesChronological = [...countingMatches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
   matchesChronological.forEach((m) => {
     m.winnerIds.forEach((id) => wins.set(id, (wins.get(id) ?? 0) + 1))
     m.loserIds.forEach((id) => losses.set(id, (losses.get(id) ?? 0) + 1))
@@ -558,7 +569,7 @@ export function computeRanking(players: Player[], matches: Match[]): PlayerStats
     })
   })
 
-  const matchesAsc = [...matches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  const matchesAsc = [...countingMatches].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
   const LAST_N = 10
 
   const eloStepByPlayer = new Map<string, number>()

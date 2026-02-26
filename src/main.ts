@@ -24,6 +24,9 @@ import {
 import { getChampionSplashUrl, getRankEmblemUrl, loadChampionData } from './ddragon'
 
 const BR_TIMEZONE = 'America/Cuiaba'
+const ADMIN_USERNAME = '22cm'
+const ADMIN_PASSWORD = 'Kabare'
+const ADMIN_AUTH_KEY = 'cabare-admin-auth'
 
 function escapeHtml(s: string): string {
   const div = document.createElement('div')
@@ -63,6 +66,7 @@ async function init() {
   saveMatches(matches)
   await loadChampionData()
   rerender()
+  ensureAdminLoginOverlay()
 }
 
 function rerender() {
@@ -133,17 +137,24 @@ function createLayout(ranking: PlayerStats[]) {
   el.className = 'layout'
   const modal = createProfileModal()
   const createMatchModal = createCreateMatchModal()
-  el.append(
+  const children: HTMLElement[] = [
     createHeader(),
     createToolbar(),
     createRankingSection(ranking),
-    createSortearSection(ranking),
+  ]
+  if (isAdminMode()) {
+    children.push(createSortearSection(ranking))
+  }
+  children.push(
     createHistorySection(),
     createComparePlayersSection(ranking),
     createGraphicsSection(ranking),
-    modal,
-    createMatchModal
+    modal
   )
+  if (isAdminMode()) {
+    children.push(createMatchModal)
+  }
+  el.append(...children)
   return el
 }
 
@@ -157,9 +168,93 @@ function createHeader() {
   return h
 }
 
-function isAdminMode(): boolean {
+function hasAdminParam(): boolean {
   if (typeof location === 'undefined') return false
   return new URLSearchParams(location.search).get('admin') === '1'
+}
+
+function isAdminAuthenticated(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(ADMIN_AUTH_KEY) === 'ok'
+  } catch {
+    return false
+  }
+}
+
+function isAdminMode(): boolean {
+  return hasAdminParam() && isAdminAuthenticated()
+}
+
+function ensureAdminLoginOverlay(): void {
+  if (!hasAdminParam() || isAdminAuthenticated()) return
+  if (typeof document === 'undefined') return
+
+  let root = document.getElementById('admin-login-overlay')
+  if (!root) {
+    root = document.createElement('div')
+    root.id = 'admin-login-overlay'
+    root.className = 'profile-modal'
+    root.innerHTML = `
+      <div class="profile-modal-overlay"></div>
+      <div class="profile-modal-panel">
+        <div class="profile-modal-content">
+          <h2 class="edit-match-title mb-3">Modo admin</h2>
+          <p class="mb-3 text-sm text-slate-400">Digite login e senha para usar as funções de admin (sortear times, criar/remover partidas).</p>
+          <form class="admin-login-form flex flex-col gap-3">
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-slate-300">Login</span>
+              <input type="text" class="admin-login-user rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" autocomplete="off" />
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-slate-300">Senha</span>
+              <input type="password" class="admin-login-pass rounded-lg px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white" autocomplete="off" />
+            </label>
+            <p class="admin-login-error text-sm text-red-400 hidden m-0">Login ou senha incorretos.</p>
+            <div class="mt-1 flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary text-sm px-4 py-1.5">Entrar</button>
+              <button type="button" class="btn btn-secondary text-sm px-4 py-1.5 admin-login-cancel">Sair do modo admin</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `
+    document.body.appendChild(root)
+  }
+
+  const form = root.querySelector<HTMLFormElement>('.admin-login-form')
+  const userInput = root.querySelector<HTMLInputElement>('.admin-login-user')
+  const passInput = root.querySelector<HTMLInputElement>('.admin-login-pass')
+  const errorEl = root.querySelector<HTMLElement>('.admin-login-error')
+  const cancelBtn = root.querySelector<HTMLButtonElement>('.admin-login-cancel')
+
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault()
+    const u = userInput?.value.trim() ?? ''
+    const p = passInput?.value ?? ''
+    if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(ADMIN_AUTH_KEY, 'ok')
+        }
+      } catch {}
+      root?.remove()
+      rerender()
+    } else if (errorEl) {
+      errorEl.classList.remove('hidden')
+    }
+  })
+
+  cancelBtn?.addEventListener('click', () => {
+    // Remove o parâmetro ?admin=1 e recarrega sem modo admin.
+    if (typeof location !== 'undefined') {
+      const url = new URL(location.href)
+      url.searchParams.delete('admin')
+      location.href = url.toString()
+    } else {
+      root?.remove()
+    }
+  })
 }
 
 function createToolbar() {

@@ -26,7 +26,7 @@ import { getChampionSplashUrl, getRankEmblemUrl, loadChampionData } from './ddra
 const BR_TIMEZONE = 'America/Cuiaba'
 const ADMIN_USERNAME = '22cm'
 const ADMIN_PASSWORD = 'Kabare'
-const ADMIN_AUTH_KEY = 'cabare-admin-auth'
+let adminSessionActive = false
 
 function escapeHtml(s: string): string {
   const div = document.createElement('div')
@@ -66,7 +66,7 @@ async function init() {
   saveMatches(matches)
   await loadChampionData()
   rerender()
-  ensureAdminLoginOverlay()
+  if (hasAdminParam() && !isAdminAuthenticated()) showAdminLoginOverlay()
 }
 
 function rerender() {
@@ -174,23 +174,17 @@ function hasAdminParam(): boolean {
 }
 
 function isAdminAuthenticated(): boolean {
-  if (typeof localStorage === 'undefined') return false
-  try {
-    return localStorage.getItem(ADMIN_AUTH_KEY) === 'ok'
-  } catch {
-    return false
-  }
+  return adminSessionActive
 }
 
 function isAdminMode(): boolean {
-  return hasAdminParam() && isAdminAuthenticated()
+  return isAdminAuthenticated()
 }
 
-function ensureAdminLoginOverlay(): void {
-  if (!hasAdminParam() || isAdminAuthenticated()) return
+function showAdminLoginOverlay(): void {
   if (typeof document === 'undefined') return
 
-  let root = document.getElementById('admin-login-overlay')
+  let root = document.getElementById('admin-login-overlay') as HTMLElement | null
   if (!root) {
     root = document.createElement('div')
     root.id = 'admin-login-overlay'
@@ -199,7 +193,7 @@ function ensureAdminLoginOverlay(): void {
       <div class="profile-modal-overlay"></div>
       <div class="profile-modal-panel">
         <div class="profile-modal-content">
-          <h2 class="edit-match-title mb-3">Modo admin</h2>
+          <h2 class="edit-match-title mb-3">Entrar como administrador</h2>
           <p class="mb-3 text-sm text-slate-400">Digite login e senha para usar as funções de admin (sortear times, criar/remover partidas).</p>
           <form class="admin-login-form flex flex-col gap-3">
             <label class="flex flex-col gap-1 text-sm">
@@ -213,52 +207,49 @@ function ensureAdminLoginOverlay(): void {
             <p class="admin-login-error text-sm text-red-400 hidden m-0">Login ou senha incorretos.</p>
             <div class="mt-1 flex flex-wrap gap-2">
               <button type="submit" class="btn btn-primary text-sm px-4 py-1.5">Entrar</button>
-              <button type="button" class="btn btn-secondary text-sm px-4 py-1.5 admin-login-cancel">Sair do modo admin</button>
+              <button type="button" class="btn btn-secondary text-sm px-4 py-1.5 admin-login-cancel">Cancelar</button>
             </div>
           </form>
         </div>
       </div>
     `
     document.body.appendChild(root)
+
+    const form = root.querySelector<HTMLFormElement>('.admin-login-form')
+    const userInput = root.querySelector<HTMLInputElement>('.admin-login-user')
+    const passInput = root.querySelector<HTMLInputElement>('.admin-login-pass')
+    const errorEl = root.querySelector<HTMLElement>('.admin-login-error')
+    const cancelBtn = root.querySelector<HTMLButtonElement>('.admin-login-cancel')
+
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault()
+      const u = userInput?.value.trim() ?? ''
+      const p = passInput?.value ?? ''
+      if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) {
+        adminSessionActive = true
+        root.classList.remove('open')
+        rerender()
+      } else if (errorEl) errorEl.classList.remove('hidden')
+    })
+
+    cancelBtn?.addEventListener('click', () => {
+      if (hasAdminParam() && typeof location !== 'undefined') {
+        const url = new URL(location.href)
+        url.searchParams.delete('admin')
+        location.href = url.toString()
+      } else {
+        root.classList.remove('open')
+      }
+    })
   }
+
   root.classList.add('open')
   root.querySelector<HTMLElement>('.admin-login-error')?.classList.add('hidden')
+}
 
-  const form = root.querySelector<HTMLFormElement>('.admin-login-form')
-  const userInput = root.querySelector<HTMLInputElement>('.admin-login-user')
-  const passInput = root.querySelector<HTMLInputElement>('.admin-login-pass')
-  const errorEl = root.querySelector<HTMLElement>('.admin-login-error')
-  const cancelBtn = root.querySelector<HTMLButtonElement>('.admin-login-cancel')
-
-  if (!(root as HTMLElement & { _adminLoginBound?: boolean })._adminLoginBound) {
-    ;(root as HTMLElement & { _adminLoginBound?: boolean })._adminLoginBound = true
-  form?.addEventListener('submit', (e) => {
-    e.preventDefault()
-    const u = userInput?.value.trim() ?? ''
-    const p = passInput?.value ?? ''
-    if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(ADMIN_AUTH_KEY, 'ok')
-        }
-      } catch {}
-      root?.remove()
-      rerender()
-    } else if (errorEl) {
-      errorEl.classList.remove('hidden')
-    }
-  })
-
-  cancelBtn?.addEventListener('click', () => {
-    if (typeof location !== 'undefined') {
-      const url = new URL(location.href)
-      url.searchParams.delete('admin')
-      location.href = url.toString()
-    } else {
-      root?.remove()
-    }
-  })
-  }
+function logoutAdmin(): void {
+  adminSessionActive = false
+  rerender()
 }
 
 function createToolbar() {
@@ -266,13 +257,20 @@ function createToolbar() {
   bar.className = 'toolbar'
   const toolbarBgUrl = getChampionSplashUrl('Yasuo', 1) ?? ''
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
+  const isAdmin = isAdminAuthenticated()
+  const adminBtnHtml = isAdmin
+    ? '<button type="button" class="btn btn-secondary btn-sm toolbar-logout-admin" title="Sair do modo administrador">Sair do modo admin</button>'
+    : '<button type="button" class="btn btn-secondary btn-sm toolbar-login-admin" title="Abrir login de administrador">Entrar como administrador</button>'
   bar.innerHTML = `
     <div class="toolbar-bg"${toolbarBgStyle} aria-hidden="true"></div>
     <div class="toolbar-overlay"></div>
     <div class="toolbar-inner">
       <span class="season-label">Temporada: <strong>${escapeHtml(loadSeason())}</strong></span>
+      ${adminBtnHtml}
     </div>
   `
+  bar.querySelector('.toolbar-login-admin')?.addEventListener('click', () => showAdminLoginOverlay())
+  bar.querySelector('.toolbar-logout-admin')?.addEventListener('click', () => logoutAdmin())
   return bar
 }
 

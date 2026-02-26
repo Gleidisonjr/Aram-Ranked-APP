@@ -1,8 +1,10 @@
 # GitHub Pages – deploy e URL
 
-## Dados no site (GitHub Pages)
+Projeto publicado **apenas no GitHub Pages** (sem Vercel nem outro serviço).
 
-O site público usa o arquivo **`public/ranking.json`** do repositório. Para o que você vê na sua máquina aparecer no site: atualize esse arquivo no projeto, faça **commit** e **push**. O deploy do GitHub Pages usa o que está no repo.
+## Dados no site
+
+O site usa o arquivo **`public/ranking.json`** do repositório. Para o que aparece no site mudar (ranking, partidas), atualize esse arquivo no projeto, faça **commit** e **push**. O deploy do GitHub Pages usa o que está no repo.
 
 ---
 

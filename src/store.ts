@@ -47,11 +47,11 @@ const REMOVED_PLAYER_NAMES = new Set<string>([])
 const basePath = (import.meta.env.BASE_URL ?? '').replace(/\/+$/, '')
 const getOrigin = () => (typeof location !== 'undefined' ? location.origin : '')
 const RANKING_JSON_URL = `${getOrigin()}${basePath ? basePath + '/' : '/'}ranking.json`
-const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.replace(/\/+$/, '')
-  ?? 'https://aram-ranked-hoxuicu3j-gleidisonjrs-projects.vercel.app'
-const SAVE_RANKING_API_URL = `${API_BASE}/api/save-ranking`
+const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.trim()?.replace(/\/+$/, '') ?? ''
+const SAVE_RANKING_API_URL = API_BASE ? `${API_BASE}/api/save-ranking` : ''
 
 export async function saveRankingToServer(data: RankingData): Promise<{ ok: boolean; error?: string }> {
+  if (!SAVE_RANKING_API_URL) return { ok: true }
   const payload = {
     players: data.players,
     matches: data.matches.map((m) => ({ ...m, picks: [], kda: [] })),

@@ -44,9 +44,10 @@ export default async function handler(req, res) {
   const contentBase64 = Buffer.from(content, 'utf8').toString('base64')
 
   try {
+    const auth = token.startsWith('ghp_') ? `Bearer ${token}` : `token ${token}`
     const getRes = await fetch(
       `https://api.github.com/repos/${repo}/contents/public/ranking.json`,
-      { headers: { Authorization: `token ${token}` } }
+      { headers: { Authorization: auth } }
     )
     const existing = getRes.ok ? await getRes.json() : null
     const sha = existing?.sha
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
       {
         method: 'PUT',
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: auth,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

@@ -2,9 +2,23 @@
 
 Projeto publicado **apenas no GitHub Pages** (sem Vercel nem outro serviço).
 
-## Dados no site
+## Botão "Entrar como administrador"
 
-O site usa o arquivo **`public/ranking.json`** do repositório. Para o que aparece no site mudar (ranking, partidas), atualize esse arquivo no projeto, faça **commit** e **push**. O deploy do GitHub Pages usa o que está no repo.
+Na barra do topo (ao lado de "Temporada: ...") aparece o botão **"Entrar como administrador"**. Quem clica abre o login (usuário e senha); após entrar, pode sortear times, criar partidas e usar os botões do histórico. Se você não vê o botão: faça **atualização forçada** (**Ctrl+Shift+R** ou **Cmd+Shift+R**) ou abra em aba anônima; o site pode estar em cache.
+
+## Dados no site e vários admins
+
+O site carrega o ranking e as partidas do arquivo **`public/ranking.json`** do repositório. Para que **qualquer pessoa** que use o modo admin (em qualquer máquina) faça alterações que **apareçam para todos** (partidas no histórico e no ranking):
+
+Há dois guias passo a passo (escolha um):
+- **Com Vercel (mais rápido):** **`docs/PASSO-A-PASSO-VERCEL.md`** — conectar o repo na Vercel, duas variáveis e pronto.
+- **Sem Vercel (Cloudflare Workers):** **`docs/PASSO-A-PASSO-RANKING-PARA-TODOS.md`** — função grátis na Cloudflare que só atualiza o repo.
+
+Se **não** fizer essa configuração, as alterações do modo admin ficam só no navegador de quem fez.
+
+## Dados no site (sem API)
+
+O site usa o arquivo **`public/ranking.json`** do repositório. Sem a API configurada, para o que aparece no site mudar você precisa atualizar esse arquivo no projeto, fazer **commit** e **push**.
 
 ---
 

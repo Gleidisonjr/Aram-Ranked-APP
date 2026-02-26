@@ -80,6 +80,10 @@ body {
   align-items: center;
   gap: 0.75rem;
 }
+.toolbar-admin-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .toolbar-left,
 .toolbar-right {
   display: flex;

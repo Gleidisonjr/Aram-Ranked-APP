@@ -20,6 +20,7 @@ import {
   getEloByStep,
   computePlayerEvolution,
   computeHeadToHead,
+  saveRankingToServer,
 } from './store'
 import { getChampionSplashUrl, getRankEmblemUrl, loadChampionData } from './ddragon'
 
@@ -88,6 +89,23 @@ function getTodayInBrazil(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: BR_TIMEZONE })
 }
 
+async function persistRankingToServer(): Promise<void> {
+  const result = await saveRankingToServer({ players, matches })
+  if (!result.ok) {
+    const el = document.getElementById('save-error-toast') || (() => {
+      const div = document.createElement('div')
+      div.id = 'save-error-toast'
+      div.className = 'save-error-toast'
+      div.setAttribute('role', 'alert')
+      document.body.appendChild(div)
+      return div
+    })()
+    el.textContent = `Não foi possível atualizar o ranking para todos: ${result.error ?? 'erro'}. Alterações salvas só neste navegador.`
+    el.classList.add('show')
+    setTimeout(() => el.classList.remove('show'), 6000)
+  }
+}
+
 function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtDate?: string, options?: { skipRerender?: boolean }): void {
   const createdAt = createdAtDate?.trim()
     ? (() => {
@@ -105,6 +123,7 @@ function addMatchFromSortear(winnerIds: string[], loserIds: string[], createdAtD
   matches = [match, ...matches]
   saveMatches(matches)
   savePlayers(players)
+  if (adminSessionActive) persistRankingToServer()
   if (!options?.skipRerender) rerender()
 }
 
@@ -114,6 +133,7 @@ function deleteMatch(matchId: string): void {
   saveMatches(matches)
   const deletedIds = [...new Set([...loadDeletedMatchIds(), matchId])]
   saveDeletedMatchIds(deletedIds)
+  if (adminSessionActive) persistRankingToServer()
   rerender()
 }
 
@@ -123,6 +143,7 @@ function invertMatch(matchId: string): void {
   if (!confirm('Inverter resultado? O time vencedor passará a perdedor e o perdedor a vencedor.')) return
   ;[match.winnerIds, match.loserIds] = [match.loserIds, match.winnerIds]
   saveMatches(matches)
+  if (adminSessionActive) persistRankingToServer()
   rerender()
 }
 
@@ -259,8 +280,8 @@ function createToolbar() {
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const isAdmin = isAdminAuthenticated()
   const adminBtnHtml = isAdmin
-    ? '<button type="button" class="btn btn-secondary btn-sm toolbar-logout-admin" title="Sair do modo administrador">Sair do modo admin</button>'
-    : '<button type="button" class="btn btn-secondary btn-sm toolbar-login-admin" title="Abrir login de administrador">Entrar como administrador</button>'
+    ? '<button type="button" id="toolbar-btn-admin" class="btn btn-secondary btn-sm toolbar-admin-btn toolbar-logout-admin" title="Sair do modo administrador">Sair do modo admin</button>'
+    : '<button type="button" id="toolbar-btn-admin" class="btn btn-secondary btn-sm toolbar-admin-btn toolbar-login-admin" title="Abrir login de administrador">Entrar como administrador</button>'
   bar.innerHTML = `
     <div class="toolbar-bg"${toolbarBgStyle} aria-hidden="true"></div>
     <div class="toolbar-overlay"></div>

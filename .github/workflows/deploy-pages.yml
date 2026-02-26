@@ -37,6 +37,8 @@ jobs:
         env:
           # Base path = nome do repositório; precisa bater com a URL (ex: /Aram-Ranked-APP/)
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          # URL da API que atualiza o ranking no repo (opcional). Configure em Settings > Actions > Variables: VITE_API_BASE
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
         run: |
           npm run build
           echo "=== Build concluído (commit ${{ github.sha }}) ==="

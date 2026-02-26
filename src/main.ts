@@ -221,6 +221,8 @@ function ensureAdminLoginOverlay(): void {
     `
     document.body.appendChild(root)
   }
+  root.classList.add('open')
+  root.querySelector<HTMLElement>('.admin-login-error')?.classList.add('hidden')
 
   const form = root.querySelector<HTMLFormElement>('.admin-login-form')
   const userInput = root.querySelector<HTMLInputElement>('.admin-login-user')
@@ -228,6 +230,8 @@ function ensureAdminLoginOverlay(): void {
   const errorEl = root.querySelector<HTMLElement>('.admin-login-error')
   const cancelBtn = root.querySelector<HTMLButtonElement>('.admin-login-cancel')
 
+  if (!(root as HTMLElement & { _adminLoginBound?: boolean })._adminLoginBound) {
+    ;(root as HTMLElement & { _adminLoginBound?: boolean })._adminLoginBound = true
   form?.addEventListener('submit', (e) => {
     e.preventDefault()
     const u = userInput?.value.trim() ?? ''
@@ -246,7 +250,6 @@ function ensureAdminLoginOverlay(): void {
   })
 
   cancelBtn?.addEventListener('click', () => {
-    // Remove o parâmetro ?admin=1 e recarrega sem modo admin.
     if (typeof location !== 'undefined') {
       const url = new URL(location.href)
       url.searchParams.delete('admin')
@@ -255,6 +258,7 @@ function ensureAdminLoginOverlay(): void {
       root?.remove()
     }
   })
+  }
 }
 
 function createToolbar() {

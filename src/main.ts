@@ -279,9 +279,10 @@ function createToolbar() {
   const toolbarBgUrl = getChampionSplashUrl('Yasuo', 1) ?? ''
   const toolbarBgStyle = toolbarBgUrl ? ` style="background-image: url(${escapeHtml(toolbarBgUrl)})"` : ''
   const isAdmin = isAdminAuthenticated()
+  const adminIcon = '<span class="toolbar-admin-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>'
   const adminBtnHtml = isAdmin
-    ? '<button type="button" id="toolbar-btn-admin" class="btn btn-secondary btn-sm toolbar-admin-btn toolbar-logout-admin" title="Sair do modo administrador">Sair do modo admin</button>'
-    : '<button type="button" id="toolbar-btn-admin" class="btn btn-secondary btn-sm toolbar-admin-btn toolbar-login-admin" title="Abrir login de administrador">Entrar como administrador</button>'
+    ? `<button type="button" id="toolbar-btn-admin" class="toolbar-admin-btn toolbar-admin-btn--logout toolbar-logout-admin" title="Sair do modo administrador">${adminIcon}<span>Sair do modo admin</span></button>`
+    : `<button type="button" id="toolbar-btn-admin" class="toolbar-admin-btn toolbar-admin-btn--login toolbar-login-admin" title="Abrir login de administrador">${adminIcon}<span>Entrar como administrador</span></button>`
   bar.innerHTML = `
     <div class="toolbar-bg"${toolbarBgStyle} aria-hidden="true"></div>
     <div class="toolbar-overlay"></div>

@@ -248,7 +248,7 @@ function showAdminLoginOverlay(): void {
       const p = passInput?.value ?? ''
       if (u === ADMIN_USERNAME && p === ADMIN_PASSWORD) {
         adminSessionActive = true
-        root.classList.remove('open')
+        root?.classList.remove('open')
         rerender()
       } else if (errorEl) errorEl.classList.remove('hidden')
     })
@@ -259,13 +259,13 @@ function showAdminLoginOverlay(): void {
         url.searchParams.delete('admin')
         location.href = url.toString()
       } else {
-        root.classList.remove('open')
+        root?.classList.remove('open')
       }
     })
   }
 
-  root.classList.add('open')
-  root.querySelector<HTMLElement>('.admin-login-error')?.classList.add('hidden')
+  root?.classList.add('open')
+  root?.querySelector<HTMLElement>('.admin-login-error')?.classList.add('hidden')
 }
 
 function logoutAdmin(): void {
